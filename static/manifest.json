@@ -1,0 +1,24 @@
+{
+  "short_name": "Playgen",
+  "name": "Playgen — Keygen Music Player",
+  "description": "Play keygen tracks and other chiptune music",
+  "icons": [
+    {
+      "src": "./img/pkey.svg",
+      "sizes": "16x16,24x24,32x32,48x48,64x64,128x128,256x256,512x512",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "./img/pkey256.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "..",
+  "display": "standalone",
+  "theme_color": "#00ff00",
+  "background_color": "#005500",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  }
+}

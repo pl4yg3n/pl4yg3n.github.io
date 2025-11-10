@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta property="og:site_name" content="Playgen">
+  <meta property="og:title" content="Playgen">
+  <meta property="og:description" content="Keygen Music radio-like player">
+  <meta name="description" content="Keygen Music radio-like player">
+  <meta name="keywords" content="keygen music,chiptune,radio player,mod,xm">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#005500">
+  <meta name="darkreader-lock">
+  <title>Playgen</title>
+  <link rel="icon" type="image/png" sizes="256x256" href="./static/img/pkey256.png">
+  <link rel="icon" type="image/svg+xml" sizes="16x16,24x24,32x32,48x48,64x64,128x128,256x256,512x512" href="./static/img/pkey.svg">
+  <link rel="apple-touch-icon" href="./static/img/pkey256.png">
+  <link rel="manifest" href="./static/manifest.json">
+
+  <style id="ambient">html {--ambient: #050;}</style>
+  <style id="period"></style>
+  <link rel="stylesheet" href="./static/main.css">
+</head>
+<body>
+  <details id="metadata-container" class="overlay" name="overlay" hidden>
+    <summary>Music info</summary>
+    <div id="metadata" class="overlay-pad">
+      <div>
+        <output id="output-id"></output>
+        <button id="share-id" data-ready="⌲" data-ok="✓" data-fail="✗" onclick="copyIdLink(this)" title="Copy link to this music"></button>
+      </div>
+      <a id="output-id-ma" target="mod-archive-tab" title="Open module's page on ModArchive.org"></a>
+      <output id="output-title"></output>
+      <output id="output-lore"></output>
+    </div>
+  </details>
+  <details id="about-container" class="overlay" name="overlay">
+    <summary>About</summary>
+    <img src="./static/img/pkey.svg" alt="Playgen Logo" class="side-logo"
+    onmousedown="this.r=(this.r||0)+1;this.style.transform='rotate('+this.r+'turn)';event.preventDefault()">
+    <div id="about" class="overlay-pad">
+      <p>
+        Playgen (pl4yg3n) is keygen music radio-like player.
+        Free and <a href="https://github.com/pl4yg3n" target="_blank">Open Source</a>!
+        Its playlist consists of <span id="base-count">over 4K</span>
+        <a href="https://en.wikipedia.org/wiki/Module_file" target="_blank">tracker music files</a>,
+        mostly in <a href="https://en.wikipedia.org/wiki/Chiptune" target="_blank">chiptune</a> style,
+        dynamically loaded and played within the browser.
+      </p>
+      <p>
+        No ads, no fees, no sign-up, no paywalls, no tracking scripts. Just free music to listen!
+      </p>
+      <p>
+        Playlists are generated from marked & tagged index of files,
+        and that's where the name from (playlist generator), but also from play + keygen.
+        Major part of playlist is based on
+        <a href="https://archive.org/details/keygen-music-2020-03-pack" target="_blank">collection of music</a>
+        once <a href="https://en.wikipedia.org/wiki/Crack_intro" target="_blank">found</a>
+        in actual <a href="https://en.wikipedia.org/wiki/Keygen" target="_blank">keygen-like</a> programs.
+        Now, most music can be found on <a href="https://modarchive.org/" target="_blank">ModArchive</a>
+        (playlist also includes a lot of additional cool tracks from there,
+        like <a href="https://modarchive.org/index.php?request=view_by_moduleid&query=60693" target="_blank">Starshine by Purple Motion</a>).
+        Here's a mode to play random music directly from full ModArchive collection (over 170K tracks!).
+      </p>
+      <p>
+        This project was inspired by <a href="https://keygen-fm.ru" target="_blank">Keygen FM</a> internet radio stream.
+        However, Keygen FM was a server-side ShoutCast broadcast (and it had just around 700 tracks),
+        but here on Playgen you can skip music, select playlist and more!
+      </p>
+      <h3>Features</h3>
+      <ul>
+        <li>
+          You can even play your files, just drag and drop them! (supported formats: <span id="supported-exts">xm, mod, s3m, it</span>)
+        </li>
+        <li>
+          There is a lot of keyboard shortcuts (for mobile, just tap on them here like buttons)
+          <ul>
+            <li>
+              Press <kbd data="Space">Space</kbd> to toggle pause,
+              <kbd data="ArrowLeft">←</kbd> / <kbd data="ArrowRight">→</kbd> to skip/return
+              (keyboard arrows, but media control buttons are supported as well)
+            </li>
+            <li>
+              Rewind: <kbd data="ArrowLeftAlt">Alt ←</kbd> / <kbd data="ArrowRightAlt">Alt →</kbd>
+              (use <kbd data="ArrowLeftShift">Shift ←</kbd> / <kbd data="ArrowRightShift">Shift →</kbd> to jump to beginning/end)
+            </li>
+            <li>
+              Speed up the music or slow it down! <kbd data="ArrowUpAlt">Alt ↑</kbd> / <kbd data="ArrowDownAlt">Alt ↓</kbd>
+              (<kbd data="/Alt">Alt /</kbd> to reset)
+            </li>
+            <li>
+              To decrease volume, press <kbd data="Minus">-</kbd>,
+              and press <kbd data="Equal">+</kbd> to increase it back (volume is already at max by default)
+            </li>
+          </ul>
+        </li>
+        <li>
+          You can use URL params to customize player behavior:
+          autoplay, repeat, seq, pl, id (can stack), and more (<a href="./?id=ma:209525&autoplay&repeat">try it</a>)
+        </li>
+        <li>
+          Above controls, click "Playgen" graffiti to toggle some animation
+          (disabled by default because the animation consumed more CPU than music player did, lol)
+        </li>
+        <li>
+          You can see music metadata on the left, these texts are extracted from the music files themselves
+        </li>
+      </ul>
+      <h3>Implementation details</h3>
+      <ul>
+        <li>
+          No frameworks used. Written in pure JavaScript and HTML5. Fast and lightweight!
+        </li>
+        <li>
+          <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API" target="_blank">Web Audio API</a>
+          is used to play music and
+          <a href="https://developer.mozilla.org/en-US/docs/Web/API/Media_Session_API" target="_blank">Media Session API</a>
+          is used to allow media buttons. However due to weird
+          <a href="https://stackoverflow.com/questions/52226454" target="_blank">limitations</a>,
+          the Media Session API does not work with Web Audio API,
+          that's why to make it work that small bubble sound is needed at the start.
+        </li>
+        <li>
+          Music files are used in original unmodified form under
+          <a href="https://modarchive.org/index.php?faq-licensing" target="_blank">ModArchive Licensing Terms</a>.
+        </li>
+        <li>
+          <a href="https://lib.openmpt.org/libopenmpt/download/" target="_blank">Libopenmpt JS/WASM library</a>
+          (version 0.8.0, under <a href="https://lib.openmpt.org/libopenmpt/license/" target="_blank">OpenMPT License</a>)
+          is used to play music files.
+        </li>
+        <li>
+          A modded version of <a href="https://github.com/deskjet/chiptune2.js" target="_blank">chiptune2.js</a> (under MIT License)
+          is used to bind Libopenmpt and Web Audio API together.
+        </li>
+      </ul>
+      <h3>Contacts</h3>
+      <ul>
+        <li>Email: <code>pl4yg3n<sub>(at)</sub>gmail<sub>(dot)</sub>com</code></li>
+        <li>Github: <a href="https://github.com/pl4yg3n" target="_blank">github.com/pl4yg3n</a> (🌟 Star it if you like!)</li>
+      </ul>
+      <p style="font-style: italic; color: #999; font-size: 0.9em; margin-top: 3em;">
+        Code of this website is licensed under MIT License.<br>
+        Music files are not the part of this website.
+        The website does not promote any illegal software.
+      </p>
+    </div>
+  </details>
+  <script src="./static/main.js" defer></script>
+  <script src="./static/vendor/libopenmpt.js" defer></script>
+  <script src="./static/vendor/chiptune2.js" defer></script>
+</body>
+</html>

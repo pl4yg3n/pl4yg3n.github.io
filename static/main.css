@@ -1,0 +1,195 @@
+@keyframes sqew {
+  0% {
+    transform: skew(12deg, 8deg);
+  }
+  50% {
+    transform: skew(-12deg, -8deg);
+  }
+  100% {
+    transform: skew(12deg, 8deg);
+  }
+}
+@keyframes sqiz {
+  0% {
+    transform: scale(0.8, 1.25);
+  }
+  50% {
+    transform: scale(1.25, 0.8);
+  }
+  100% {
+    transform: scale(0.8, 1.25);
+  }
+}
+@property --ambient {
+  syntax: '<color>';
+  initial-value: #050;
+  inherits: true;
+}
+html {
+  transition: --ambient ease 2s;
+}
+
+html {
+  color: color-mix(in oklab, var(--ambient) 80%, #fff 20%);
+  background-color: var(--ambient);
+  background-image: linear-gradient(90deg, rgba(0,0,0,.6), rgba(0,0,0,.2) 25%, rgba(0,0,0,0) 50%, rgba(0,0,0,.2) 75%, rgba(0,0,0,.6) 100%), repeating-linear-gradient(rgba(0,0,0,.5), rgba(0,0,0,0) 1px, rgba(0,0,0,.5) 2px);
+  background-attachment: fixed;
+  background-position: top center;
+  font-weight: 550;
+  font-size: 18px;
+  text-align: center;
+}
+
+html, .graffiti, input[type="text"], select, button {
+  text-shadow: #000 -0.08em -0.08em, #000 0.08em 0.08em, #000 -0.08em 0.08em, #000 0.08em -0.08em, #000 0.11em 0, #000 -0.11em 0, #000 0 0.11em, #000 0 -0.11em, #000 -0.1em -0.06em, #000 0.1em 0.06em, #000 -0.1em 0.06em, #000 0.1em -0.06em, #000 -0.06em -0.1em, #000 0.06em 0.1em, #000 -0.06em 0.1em, #000 0.06em -0.1em;
+  font-family: monospace;
+}
+
+body {
+  margin: 0;
+}
+
+.graffiti {
+  font-size: 54px;
+  margin-top: 0.5em;
+  display: inline-block;
+}
+
+input[type="text"], select, button {
+  font-size: inherit;
+  border: 0.15em solid #000;
+  border-radius: 0.3em;
+  background: rgba(0, 0, 0, 0.2);
+  color: #ccc;
+  margin: 0.5em;
+  cursor: pointer;
+  padding: 0.2em 0.3em;
+  box-sizing: content-box;
+  height: 1.45em;
+}
+input[type="text"]:hover, select:hover, button:hover, kbd[data]:hover {
+  border-color: #050;
+  color: #0f0;
+}
+option {
+  background: #333;
+  color: #ccc;
+}
+button:active {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.leaf {
+  display: inline-block;
+}
+
+.waving > .leaf {
+  animation: sqew var(--period) infinite ease-in-out;
+  transform-origin: 50% 60%;
+}
+
+/* overlays */
+
+.overlay {
+  padding: 0.25em 0.5em;
+  color: #ccc;
+  position: absolute;
+  box-sizing: border-box;
+}
+.overlay[open] {
+  background-color: rgba(0, 0, 0, 0.65);
+  /*backdrop-filter: blur(2em);*/ /* disabled because of performance */
+}
+.overlay > summary {
+  cursor: pointer;
+  opacity: 0.6;
+}
+.overlay > summary:hover {
+  opacity: 1;
+}
+#metadata-container {
+  z-index: 5;
+  border-radius: 0 0 0.5em 0;
+}
+#about-container {
+  right: 0;
+}
+#about-container[open] {
+  width: 100%;
+}
+.overlay-pad {
+  text-align: left;
+  font-weight: normal;
+  text-shadow: #000 1px 1px 1px, #000 0px 1px 1px;
+}
+#metadata {
+  max-width: 40em;
+  font-family: monospace;
+}
+#about-container {
+  z-index: 10;
+}
+#about-container > summary {
+  float: right;
+}
+#about {
+  max-width: 50em;
+  font-family: sans-serif;
+  margin: auto;
+}
+
+/* contents */
+
+#output-id {
+  opacity: 0.5;
+}
+#share-id {
+  margin: 0;
+  padding: 0 0.3em;
+  height: 1.2em;
+  width: 1em;
+  line-height: 1em;
+  font-family: monospace;
+  opacity: 0.5;
+}
+#share-id:hover {
+  opacity: 1;
+}
+#output-title {
+  display: block;
+  color: #0f0;
+}
+#output-lore {
+  display: block;
+  white-space: pre-wrap;
+}
+
+a {
+  color: #5af;
+}
+a:visited {
+  color: #99f;
+}
+kbd {
+  border: 0.1em solid rgba(0, 0, 0, 0.4);
+  border-radius: 0.3em;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0 0.1em;
+}
+kbd[data] {
+  cursor: pointer;
+}
+sub {
+  color: #555;
+  font-size: 0.8em;
+}
+#supported-exts {
+  font-style: italic;
+}
+.side-logo {
+  float: left;
+  max-height: 8em;
+  margin: 1em 0 0 0.25em;
+  transition: transform 0.5s;
+  transform-origin: 60% 25%;
+}
