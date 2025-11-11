@@ -24,7 +24,7 @@ const modes = [
   {name: '🎸 Rock', p: ':rock'},
   {name: '📼 Remix', p: 'group_remix', title: 'Remixes & remakes'},
   {name: '🎃 Pumpkin', p: 'group_pumpkin', title: 'Some mildly witchy & spooky tracks'},
-  {name: '🍰 Happy', p: 'mood_gold', title: 'Happy music to cheer up :D'},
+  {name: '🍰 Happy', p: 'mood_gold', title: 'Happy music to cheer up ^^'},
   {name: '🌧️ Sorrow', p: ':sorrow', title: 'Sad tracks to comfort you'},
 
   {name: '👍 Good', p: 'day_good', title: 'Collection of pretty good tracks, usually played from 14:00 to 17:00'},
@@ -301,7 +301,7 @@ async function addToQueue(q) {
   console.debug('Added to queue:', q)
   let loaded = q.buffer ? Promise.resolve(q) : fetch(q.src)
     .then(x => {
-      if (x.status != 200) throw 'Bad response status: ' + x.status
+      if (x.status != 200) throw 'Bad response status: ' + x.status + ' at ' + q.src
       return x.arrayBuffer()
     })
     .then(buffer => {
