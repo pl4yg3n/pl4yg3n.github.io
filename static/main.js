@@ -394,6 +394,11 @@ async function displayMetadata(q) {
   document.getElementById('output-id-ma').href = idMa ? urlConfig.pageUrlModArchive + idMa : ''
   document.getElementById('output-title').textContent = data.title
   document.getElementById('output-lore').textContent = data.message
+  // allow resizing only if wide strings are present
+  let resizer = document.getElementById('metadata-resizer')
+  let isMessageWide = data.message.match(/.{23}/) || data.title.length >= 23
+  resizer.hidden = !isMessageWide
+  if (isMessageWide) resizer.onpointerdown = resizeInit
 }
 
 function copyIdLink(shareButton) {
@@ -407,6 +412,27 @@ function copyIdLink(shareButton) {
     return false
   }
   shareButton.textContent = shareButton.getAttribute('data-ok')
+}
+
+// --- resizing max width of metadata panel by dragging
+
+function resizeInit(event) {
+  if (event.button) return
+  let target = this.parentNode
+  let offsetX = target.clientWidth - event.clientX
+  let id = event.pointerId
+  let endingEvents = ['up', 'leave', 'cancel']
+  let resizeEnd = () => {
+    window.removeEventListener('pointermove', resizeSet)
+    endingEvents.forEach(x => window.removeEventListener('pointer' + x, resizeEnd))
+  }
+  let resizeSet = e => {
+    if (e.pointerId != id) return
+    target.style.maxWidth = (offsetX + e.clientX) + 'px'
+  }
+  window.addEventListener('pointermove', resizeSet)
+  endingEvents.forEach(x => window.addEventListener('pointer' + x, resizeEnd))
+  event.preventDefault()
 }
 
 // --- error 'handling'
@@ -880,7 +906,7 @@ function updateGraffitiAnim() {
     }
     return
   }
-  let period = libopenmpt._openmpt_module_get_current_speed(state.player.currentPlayingNode.modulePtr) / 3
+  let period = libopenmpt._openmpt_module_get_current_speed(state.player.currentPlayingNode.modulePtr) / 3.2 / state.playerConfig.speed
   if (state.anim.currPeriod == period) return
   state.anim.currPeriod = period
   setAnimPeriod(period)
