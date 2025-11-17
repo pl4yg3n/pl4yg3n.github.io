@@ -627,7 +627,9 @@ function ready() {
   if (urlParams['id'] && urlParams['id'].length) urlParams['id'].forEach(enqById)
   // make keybinds in help functional
   document.querySelectorAll('kbd[data]').forEach(elem => {
-    elem.addEventListener('click', state.keyDownListeners[elem.getAttribute('data')])
+    let listener = state.keyDownListeners[elem.getAttribute('data')]
+    if (!listener) console.error(`Listener '${elem.getAttribute('data')}' specified in <kbd> is not specified!`)
+    elem.addEventListener('click', listener)
     elem.addEventListener('mousedown', e => {
       e.preventDefault()
       e.stopPropagation()
