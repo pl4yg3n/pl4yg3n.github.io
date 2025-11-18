@@ -10,7 +10,7 @@ var ChiptuneJsPlayer = function (config) {
 
 ChiptuneJsPlayer.prototype.constructor = ChiptuneJsPlayer
 
-ChiptuneJsPlayer.prototype.onProcess = () => {}
+ChiptuneJsPlayer.prototype.onTick = () => {}
 ChiptuneJsPlayer.prototype.onEnded = () => {}
 
 // metadata
@@ -27,15 +27,21 @@ ChiptuneJsPlayer.prototype.getCurrentOrder = function() {
 }
 
 ChiptuneJsPlayer.prototype.getCurrentSeconds = function() {
-  return libopenmpt._openmpt_module_get_position_seconds(this.currentPlayingNode.modulePtr)
+  let start = this.currentPlayingNode.insn.start || 0
+  return libopenmpt._openmpt_module_get_position_seconds(this.currentPlayingNode.modulePtr) - start
 }
 
 ChiptuneJsPlayer.prototype.setCurrentSeconds = function(t) {
-  return libopenmpt._openmpt_module_set_position_seconds(this.currentPlayingNode.modulePtr, Math.max(t, 0))
+  let start = this.currentPlayingNode.insn.start || 0
+  let out = libopenmpt._openmpt_module_set_position_seconds(this.currentPlayingNode.modulePtr, Math.max(t, 0) + start)
+  this.onTick()
+  console.debug(`Position set to ${out} seconds`)
+  return out
 }
 
 ChiptuneJsPlayer.prototype.getTotalSeconds = function() {
-  return this.currentPlayingNode.insn.end || libopenmpt._openmpt_module_get_duration_seconds(this.currentPlayingNode.modulePtr)
+  let start = this.currentPlayingNode.insn.start || 0
+  return (this.currentPlayingNode.insn.end || libopenmpt._openmpt_module_get_duration_seconds(this.currentPlayingNode.modulePtr)) - start
 }
 
 ChiptuneJsPlayer.prototype.getTotalOrder = function() {
@@ -100,13 +106,12 @@ ChiptuneJsPlayer.prototype.metadata = function() {
 }
 
 ChiptuneJsPlayer.prototype.play = function(buffer, insn = {}) {
+  if (!insn) insn = {}
   this.stop()
   this.currentPlayingNode = this.createLibopenmptNode(buffer, this.config, insn)
   libopenmpt._openmpt_module_set_repeat_count(this.currentPlayingNode.modulePtr, this.config.repeatCount || +insn['repeat'] || 0)
   this.setVolumeGainMillibells(this.config.volume)
-  if (insn && insn.start) {
-    console.debug('setting custom start time:', this.setCurrentSeconds(insn.start))
-  }
+  if (insn.start) this.setCurrentSeconds(0)
   this.currentPlayingNode.reconnect()
 }
 
@@ -198,10 +203,9 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
     }
     var framesRendered = 0
     var ended = false
-    var error = false
     var framesToRender = outputL.length
     let realSampleRate = this.context.sampleRate / (this.config.speed || 1)
-    if (this.insn && this.insn.end && this.player.getCurrentSeconds() > this.insn.end) {
+    if (this.insn.end && this.player.getCurrentSeconds() > this.insn.end) {
       ended = true
     } else
     while (framesToRender > 0) {
@@ -209,7 +213,7 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
       var actualFramesPerChunk = this.modulePtr && libopenmpt._openmpt_module_read_float_stereo(this.modulePtr, realSampleRate, framesPerChunk, this.leftBufferPtr, this.rightBufferPtr)
       if (actualFramesPerChunk == 0) {
         ended = true
-        error = !this.modulePtr
+        //error = !this.modulePtr
       } else {
         var rawAudioLeft = HEAPF32.subarray(this.leftBufferPtr / 4, this.leftBufferPtr / 4 + actualFramesPerChunk)
         var rawAudioRight = HEAPF32.subarray(this.rightBufferPtr / 4, this.rightBufferPtr / 4 + actualFramesPerChunk)
@@ -250,6 +254,8 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
     if (ended) {
       this.stop()
       processNode.player.onEnded()
+    } else {
+      processNode.player.onTick()
     }
   }
   return processNode

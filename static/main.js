@@ -121,7 +121,7 @@ const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'm
 // gmc, gtk, gt2, ult, unic, wow, xmf, gdm, mo3, oxm, umx, xpk, ppm, mmcmp
 
 const urlConfig = {
-  collectionUrlRoot: (location.hostname == 'localhost') ? './collection/'
+  collectionUrlRoot: location.hostname.match(/localhost|\d+(\.\d+){3}/) ? './collection/'
     : 'https://raw.githubusercontent.com/pl4yg3n/collection/refs/heads/main/',
   indexPathLocal: 'index.csv',
   musicPathLocal: 'data/',
@@ -143,6 +143,7 @@ const state = {
     rewindTailSeconds: 20,
     sequentially: !!urlParams['seq'],
     autoplay: !!urlParams['autoplay'],
+    seekBarAccuracy: 10,
   },
   player: null,
   queue: [],
@@ -159,18 +160,11 @@ const state = {
 // --- playing logic
 
 async function launchPlayer() {
-  if (state.playerConfig.audioElem) {
-    state.playerConfig.audioElem = makeElem(makeElem(state.controls, 'div'), 'audio', audio => {
-      audio.controls = true
-      audio.addEventListener('ended', playNext)
-    })
-  } else {
-    // should be before player init, because need to fail-fast on autoplay blocking
-    await createFakeAudioToMakeMediaSessionWork()
-  }
+  await createFakeAudioToMakeMediaSessionWork()
   state.player = new ChiptuneJsPlayer(state.playerConfig)
-  if (!state.playerConfig.audioElem) {
-    state.player.onEnded = playNext
+  state.player.onEnded = playNext
+  state.player.onTick = () => {
+    updateProgress()
   }
 }
 
@@ -351,6 +345,7 @@ function playQueueItem(q, currentIndex) {
   try {
     state.player.play(q.buffer, q.insn)
     displayMetadata(q)
+    resetProgress()
   } catch (err) {
     unlistQueueItem(q)
     playOnError(err)
@@ -668,6 +663,9 @@ function createControls() {
     createNextButton(controls)
     assignKeyboardControls()
     generateModeSelect(controls)
+    makeElem(controls, 'div', progressRow => {
+      createSeekBar(progressRow)
+    })
   })
 }
 
@@ -783,6 +781,56 @@ function assignKeyboardControls() {
     }
     state.player.setVolumeGainMillibells(state.playerConfig.volume)
   }
+}
+
+function createSeekBar(row) {
+  row.id = 'progress-row'
+  makeElem(row, 'input', bar => {
+    bar.type = 'range'
+    bar.id = 'seekbar'
+    state.seekbar = bar
+    bar.oninput = () => {
+      let t = bar.value / state.playerConfig.seekBarAccuracy
+      state.player.setCurrentSeconds(t)
+    }
+  })
+  makeElem(row, 'span', e => {
+    state.progressNow = e
+    e.id = 't-now'
+  })
+  makeElem(row, 'span', e => {
+    state.progressFull = e
+    e.id = 't-end'
+  })
+  row.hidden = true
+  state.progressRow = row
+}
+
+function durationToString(t) {
+  let seconds = Math.floor(t)
+  let minutes = Math.floor(seconds / 60)
+  seconds -= minutes * 60
+  let s = seconds.toString()
+  if (s.length < 2) s = '0' + s
+  let m = minutes.toString()
+  if (m.length < 2) m = '0' + m
+  return m + ':' + s
+}
+
+function resetProgress() {
+  let duration = state.player.getTotalSeconds()
+  state.seekbar.max = Math.ceil(duration * state.playerConfig.seekBarAccuracy)
+  state.seekbar.min = 0
+  state.seekbar.value = 0
+  state.progressRow.hidden = false
+  state.progressNow.textContent = durationToString(0)
+  state.progressFull.textContent = durationToString(Math.ceil(duration))
+}
+
+function updateProgress() {
+  let t = state.player.getCurrentSeconds()
+  state.seekbar.value = Math.round(t * state.playerConfig.seekBarAccuracy)
+  state.progressNow.textContent = durationToString(t)
 }
 
 function generateModeSelect(parent) {
