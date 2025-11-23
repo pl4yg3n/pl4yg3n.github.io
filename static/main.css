@@ -85,6 +85,7 @@ button:active {
   border: 0.15em solid #000;
   font-size: 1em;
   cursor: pointer;
+  opacity: 0.6;
 }
 @supports not (selector(::-moz-range-progress)) {
 #seekbar {
