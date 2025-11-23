@@ -1,0 +1,11 @@
+# Ignore everything:
+*
+# Except for:
+!.gitignore
+!.gitattributes
+!README.md
+!LICENSE.txt
+!index.html
+!static/
+!static/*
+!static/*/*
