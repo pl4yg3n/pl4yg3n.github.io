@@ -145,6 +145,12 @@ const state = {
     sequentially: !!urlParams['seq'],
     autoplay: !!urlParams['autoplay'],
     seekBarAccuracy: 10,
+    tickFactor: 1 / 3,
+    useGraph: !!urlParams['graph'],
+    graphParams: {
+      w: 2048,
+      h: 320,
+    }
   },
   player: null,
   queue: [],
@@ -957,7 +963,7 @@ function updateGraffitiAnim() {
     }
     return
   }
-  let period = libopenmpt._openmpt_module_get_current_speed(state.player.currentPlayingNode.modulePtr) / 3.2 / state.playerConfig.speed
+  let period = state.player.getCurrentTicksPerRow()
   if (state.anim.currPeriod == period) return
   state.anim.currPeriod = period
   setAnimPeriod(period)

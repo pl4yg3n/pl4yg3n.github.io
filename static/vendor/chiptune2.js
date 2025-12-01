@@ -2,7 +2,7 @@
 'use strict'
 
 // player
-var ChiptuneJsPlayer = function (config) {
+const ChiptuneJsPlayer = function (config) {
   this.config = config
   this.context = config.context || new (window['AudioContext'] || window['webkitAudioContext'])()
   this.currentPlayingNode = null
@@ -24,6 +24,11 @@ ChiptuneJsPlayer.prototype.getCurrentPattern = function() {
 
 ChiptuneJsPlayer.prototype.getCurrentOrder = function() {
   return libopenmpt._openmpt_module_get_current_order(this.currentPlayingNode.modulePtr)
+}
+
+ChiptuneJsPlayer.prototype.getCurrentTicksPerRow = function() {
+  return libopenmpt._openmpt_module_get_current_speed(this.currentPlayingNode.modulePtr)
+    * (this.config.tickFactor || 1) / (this.config.speed || 1)
 }
 
 ChiptuneJsPlayer.prototype.getCurrentSeconds = function() {
@@ -57,11 +62,11 @@ ChiptuneJsPlayer.prototype.setVolumeGainMillibells = function(volume) {
 }
 
 ChiptuneJsPlayer.prototype.metadata = function() {
-  var data = {}
-  var keys = ['title', 'message_raw', 'type']
+  let data = {}
+  let keys = ['title', 'message_raw', 'type']
   // sometimes some texts won't show up in `message`,
   // that's why need to use `message_raw` and add all other manually
-  for (var i = 0; i < keys.length; i++) {
+  for (let i = 0; i < keys.length; i++) {
     let keyNameBuffer = libopenmpt._malloc(keys[i].length + 1)
     stringToUTF8(keys[i], keyNameBuffer, keys[i].length + 1)
     let textBuffer = libopenmpt._openmpt_module_get_metadata(this.currentPlayingNode.modulePtr, keyNameBuffer)
@@ -71,14 +76,14 @@ ChiptuneJsPlayer.prototype.metadata = function() {
   }
   let nInstruments = libopenmpt._openmpt_module_get_num_instruments(this.currentPlayingNode.modulePtr)
   let instrumentText = ''
-  for (var i = 0; i < nInstruments; i++) {
+  for (let i = 0; i < nInstruments; i++) {
     let textBuffer = libopenmpt._openmpt_module_get_instrument_name(this.currentPlayingNode.modulePtr, i)
     instrumentText += UTF8ToString(textBuffer) + '\n'
     libopenmpt._free(textBuffer)
   }
   let nSamples = libopenmpt._openmpt_module_get_num_samples(this.currentPlayingNode.modulePtr)
   let sampleText = ''
-  for (var i = 0; i < nSamples; i++) {
+  for (let i = 0; i < nSamples; i++) {
     let textBuffer = libopenmpt._openmpt_module_get_sample_name(this.currentPlayingNode.modulePtr, i)
     let sampleName = UTF8ToString(textBuffer)
     if (sampleName == 'untitled' || sampleName == 'Untitled') sampleName = ''
@@ -130,13 +135,13 @@ ChiptuneJsPlayer.prototype.togglePause = function() {
 }
 
 ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn) {
-  var maxFramesPerChunk = config.maxFramesPerChunk || config.bufferSize || 4096
-  var processNode = this.context.createScriptProcessor(config.bufferSize || 2048, 0, 2)
+  let maxFramesPerChunk = config.maxFramesPerChunk || config.bufferSize || 4096
+  let processNode = this.context.createScriptProcessor(config.bufferSize || 2048, 0, 2)
   processNode.config = config
   processNode.insn = insn
   processNode.player = this
-  var byteArray = new Int8Array(buffer)
-  var ptrToFile = libopenmpt._malloc(byteArray.byteLength)
+  let byteArray = new Int8Array(buffer)
+  let ptrToFile = libopenmpt._malloc(byteArray.byteLength)
   processNode.ptrToFile = ptrToFile
   HEAPU8.set(byteArray, ptrToFile)
   processNode.modulePtr = libopenmpt._openmpt_module_create_from_memory(ptrToFile, byteArray.byteLength, 0, 0, 0)
@@ -188,8 +193,8 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
     }
   }
   processNode.onaudioprocess = function(e) {
-    var outputL = e.outputBuffer.getChannelData(0)
-    var outputR = e.outputBuffer.getChannelData(1)
+    let outputL = e.outputBuffer.getChannelData(0)
+    let outputR = e.outputBuffer.getChannelData(1)
     if (this.modulePtr == 0) {
       outputL.fill(0)
       outputR.fill(0)
@@ -201,44 +206,118 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
       outputR.fill(0)
       return
     }
-    var framesRendered = 0
-    var ended = false
-    var framesToRender = outputL.length
+    let framesRendered = 0
+    let ended = false
+    let framesToRender = outputL.length
     let realSampleRate = this.context.sampleRate / (this.config.speed || 1)
     if (this.insn.end && this.player.getCurrentSeconds() > this.insn.end) {
       ended = true
     } else
     while (framesToRender > 0) {
-      var framesPerChunk = Math.min(framesToRender, maxFramesPerChunk)
-      var actualFramesPerChunk = this.modulePtr && libopenmpt._openmpt_module_read_float_stereo(this.modulePtr, realSampleRate, framesPerChunk, this.leftBufferPtr, this.rightBufferPtr)
+      let framesPerChunk = Math.min(framesToRender, maxFramesPerChunk)
+      let actualFramesPerChunk = this.modulePtr && libopenmpt._openmpt_module_read_float_stereo(this.modulePtr, realSampleRate, framesPerChunk, this.leftBufferPtr, this.rightBufferPtr)
       if (actualFramesPerChunk == 0) {
         ended = true
-        //error = !this.modulePtr
       } else {
-        var rawAudioLeft = HEAPF32.subarray(this.leftBufferPtr / 4, this.leftBufferPtr / 4 + actualFramesPerChunk)
-        var rawAudioRight = HEAPF32.subarray(this.rightBufferPtr / 4, this.rightBufferPtr / 4 + actualFramesPerChunk)
+        let rawAudioLeft = HEAPF32.subarray(this.leftBufferPtr / 4, this.leftBufferPtr / 4 + actualFramesPerChunk)
+        let rawAudioRight = HEAPF32.subarray(this.rightBufferPtr / 4, this.rightBufferPtr / 4 + actualFramesPerChunk)
+        let lines = null
         if (!config.smoothing) {
+          // just copy raw data
           outputL.set(rawAudioLeft, framesRendered)
           outputR.set(rawAudioRight, framesRendered)
-        } else {
-          // apply smoothing to remove noises
-          let x = config.smoothingX || 0.99
-          let smoothedValueL = processNode.smoothedValueL || 0
-          let smoothedValueR = processNode.smoothedValueR || 0
-          let smoothedVolume = processNode.smoothedVolume || 0
-          for (var i = 0; i < actualFramesPerChunk; ++i) {
-            let t = config.smoothing / (smoothedVolume + 1)
-            let z = 1 - t
-            let smoothedValueLNew = smoothedValueL * t + rawAudioLeft[i] * z
-            let smoothedValueRNew = smoothedValueR * t + rawAudioRight[i] * z
-            let currentVolume = (rawAudioLeft[i] - smoothedValueL) ** 2 + (rawAudioRight[i] - smoothedValueR) ** 2
-            smoothedVolume = x * smoothedVolume + (1-x) * currentVolume
-            outputL[framesRendered + i] = smoothedValueL = smoothedValueLNew
-            outputR[framesRendered + i] = smoothedValueR = smoothedValueRNew
+          // dump line data if needed
+          if (config.useGraph) {
+            lines = {
+              l: {data: rawAudioLeft, color: '#05f'},
+              r: {data: rawAudioRight, color: '#f50'},
+            }
           }
-          processNode.smoothedValueL = smoothedValueL
-          processNode.smoothedValueR = smoothedValueR
-          processNode.smoothedVolume = smoothedVolume
+        } else {
+          // apply smoothing to remove sharp noises
+          let sm = config.smoothing
+          let smX = config.smoothingX || 0.9
+
+          // setup value storage
+          if (!processNode.vals) {
+            processNode.vals = {
+              prevOutL: 0,
+              prevOutR: 0,
+              prevL0: 0,
+              prevR0: 0,
+              volAvg1L: 0,
+              volAvg1R: 0,
+              volAvg2L: 0,
+              volAvg2R: 0,
+            }
+          }
+          let v = processNode.vals
+          // setup line data dumping if needed
+          if (config.useGraph) {
+            lines = {
+              vol: {data: [], color: '#f00', oh: 1},
+              mav: {data: [], color: '#a00', oh: 1},
+              vsm: {data: [], color: '#0f0', oh: 1},
+              smu: {data: [], color: '#f0f', oh: 1},
+              raw: {data: [], color: '#fa0'},
+              out: {data: [], color: '#0af'},
+            }
+          }
+          for (let i = 0; i < actualFramesPerChunk; ++i) {
+            // algorithm: for each channel
+            // volume = abs(raw[i] - raw[i-1])
+            // compute double exponential-window average of volume
+            // then dampen value to last output depending on that average volume
+            let currL0 = rawAudioLeft[i]
+            let currR0 = rawAudioRight[i]
+            let volL = Math.abs(currL0 - v.prevL0)
+            let volR = Math.abs(currR0 - v.prevR0)
+            v.volAvg1L = v.volAvg1L * smX + volL * (1 - smX)
+            v.volAvg1R = v.volAvg1R * smX + volR * (1 - smX)
+            v.volAvg2L = v.volAvg2L * smX + v.volAvg1L * (1 - smX)
+            v.volAvg2R = v.volAvg2R * smX + v.volAvg1R * (1 - smX)
+            let s0L = (1 / (1 + v.volAvg2L*sm)**2)
+            let s0R = (1 / (1 + v.volAvg2R*sm)**2)
+            outputL[framesRendered + i] = v.prevOutL = (rawAudioLeft[i] * s0L) + v.prevOutL * (1 - s0L)
+            outputR[framesRendered + i] = v.prevOutR = (rawAudioRight[i] * s0R) + v.prevOutR * (1 - s0R)
+            v.prevL0 = currL0
+            v.prevR0 = currR0
+            // dump line data if needed
+            if (lines) {
+              lines.raw.data.push(rawAudioLeft[i])
+              lines.out.data.push(v.prevOutL)
+              lines.mav.data.push(v.volAvg1L)
+              lines.vol.data.push(volL)
+              lines.vsm.data.push(v.volAvg2L)
+              lines.smu.data.push(s0L)
+            }
+          }
+        }
+        // output line data to oscilloscope
+        if (lines) {
+          let canv = document.getElementById('oscilloscope')
+          if (!canv) {
+            canv = document.createElement('canvas')
+            canv.id = 'oscilloscope'
+            document.body.appendChild(canv)
+          }
+          let w = config.graphParams.w
+          let h = config.graphParams.h
+          let scaleW = w / maxFramesPerChunk
+          if (canv.width != w) canv.width = w
+          if (canv.height != h) canv.height = h
+          let c = canv.getContext('2d')
+          c.clearRect(0, 0, w, h)
+          c.globalCompositeOperation = 'screen'
+          for (let l of Object.values(lines)) {
+            c.beginPath()
+            let scaleH = (l.oh || 0.5) * h
+            for (let i = 0; i < l.data.length; ++i) {
+              c.lineTo((i + 0.5) * scaleW, (1 - l.data[i]) * scaleH)
+            }
+            c.strokeStyle = l.color
+            c.stroke()
+          }
         }
         if (config.spectrumHook) {
           setTimeout(() => config.spectrumHook(rawAudioLeft, rawAudioRight, this.context.sampleRate), 0)
