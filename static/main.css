@@ -3,9 +3,11 @@
   initial-value: #050;
   inherits: true;
 }
+
 html {
   transition: --ambient ease 2s;
-  color: color-mix(in oklab, var(--ambient) 80%, #fff 20%);
+  --foreground: color-mix(in oklab, var(--ambient) 80%, #fff 20%);
+  color: #ccc;
   background-color: var(--ambient);
   background-image: linear-gradient(90deg, rgba(0,0,0,.6), rgba(0,0,0,.2) 25%, rgba(0,0,0,0) 50%, rgba(0,0,0,.2) 75%, rgba(0,0,0,.6) 100%), repeating-linear-gradient(rgba(0,0,0,.5), rgba(0,0,0,0) 1px, rgba(0,0,0,.5) 2px);
   background-attachment: fixed;
@@ -29,6 +31,7 @@ body {
   font-size: 54px;
   margin-top: 0.5em;
   display: inline-block;
+  color: var(--foreground);
 }
 
 /* inputs */
@@ -65,7 +68,6 @@ button:active {
   margin: 0.8em auto;
 }
 #t-now, #t-end {
-  color: #ccc;
   font-size: 0.8em;
   opacity: 0.6;
   margin: 0 0.1em;
@@ -104,7 +106,7 @@ button:active {
   cursor: grab;
   width: 0.3em;
   height: 100%;
-  box-shadow: -100vw 0 0 100vw color-mix(in oklab, var(--ambient) 80%, #fff 20%);
+  box-shadow: -100vw 0 0 100vw var(--foreground, #ccc);
 }
 #seekbar::-webkit-slider-thumb:active {
   cursor: grabbing;
@@ -117,7 +119,7 @@ button:active {
 #seekbar::-moz-range-progress {
   height: 100%;
   background: #0f0;
-  background: color-mix(in oklab, var(--ambient) 80%, #fff 20%);
+  background: var(--foreground, #ccc);
 }
 #seekbar::-moz-range-thumb {
   opacity: 0;
@@ -141,6 +143,7 @@ button:active {
 #oscilloscope {
   max-width: 90vw;
   background: rgba(0,0,0,0.5);
+  border-radius: 0.7em;
 }
 
 /* animations */
@@ -180,7 +183,6 @@ button:active {
 
 .overlay {
   padding: 0.25em 0.5em;
-  color: #ccc;
   position: absolute;
   box-sizing: border-box;
 }
