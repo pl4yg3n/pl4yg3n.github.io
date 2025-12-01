@@ -132,9 +132,9 @@ const urlConfig = {
 }
 const state = {
   playerConfig: {
-    bufferSize: Math.abs(+urlParams['buffer'] || 2**14),
+    bufferSize: Math.abs(+urlParams['buffer'] || localStorage['playgen:bufferSize'] || 2 ** 14),
     repeatCount: (x => x === true ? -1 : +x)(urlParams['repeat']) || null,
-    smoothing: Math.abs(+urlParams['smoothing'] || 0),
+    smoothing: Math.abs(+urlParams['smoothing'] || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
     speed: Math.abs(+urlParams['speed'] || 1),
     speedStep: 2 ** (1/8),
     volume: Math.min(+urlParams['volume'] || 0, 0),
@@ -353,6 +353,7 @@ function playQueueItem(q, currentIndex) {
     state.player.play(q.buffer, q.insn)
     displayMetadata(q)
     resetProgress()
+    document.getElementById('more-options').parentElement.hidden = false
   } catch (err) {
     unlistQueueItem(q)
     playOnError(err)
@@ -669,10 +670,9 @@ function createControls() {
     createPauseButton(controls)
     createNextButton(controls)
     assignKeyboardControls()
-    generateModeSelect(controls)
-    makeElem(controls, 'div', progressRow => {
-      createSeekBar(progressRow)
-    })
+    createModeSelect(controls)
+    makeElem(controls, 'div', progressRow => createSeekBar(progressRow))
+    createOptionalControls(controls)
   })
 }
 
@@ -840,7 +840,7 @@ function updateProgress() {
   state.progressNow.textContent = durationToString(t)
 }
 
-function generateModeSelect(parent) {
+function createModeSelect(parent) {
   makeElem(parent, 'select', select => {
     for (let mode of modes) makeElem(select, 'option', opt => {
       opt.value = mode.p
@@ -870,6 +870,88 @@ function generateModeSelect(parent) {
     select.value = localStorage['playgen:mode'] || '@auto'
     selectPlaylist(select.value)
   })
+}
+
+function createOptionalControls(parent) {
+  makeElem(parent, 'details', parent => {
+    parent.hidden = true
+    makeElem(parent, 'summary', summary => {
+      summary.id = 'more-options'
+      summary.textContent = '···'
+      summary.title = 'More options...'
+    })
+    makeElem(parent, 'div', parent => {
+      createFilterSelect(parent)
+      createGraphButton(parent)
+      createBufferSelect(parent)
+    })
+  })
+}
+
+function createFilterSelect(parent) {
+  let filterValues = [
+    {name: 'No filter', value: 'none', description: 'Original raw audio as is'},
+    {name: 'Smoothed', value: 'smooth', description: 'Sharp noise suppression (experimental)'},
+  ]
+  makeElem(parent, 'select', select => {
+    for (let filter of filterValues) makeElem(select, 'option', opt => {
+      opt.value = filter.value
+      opt.textContent = '\u2005' + filter.name
+      opt.title = filter.description
+    })
+    select.title = 'Filter for audio post-processing (experimental)'
+    select.value = localStorage['playgen:filter'] || 'none'
+    select.addEventListener('change', () => {
+      let filter = select.value
+      state.playerConfig.smoothing = filter == 'smooth' ? 80 : 0
+      localStorage['playgen:filter'] = filter
+    })
+  })
+}
+
+function createBufferSelect(parent) {
+  makeElem(parent, 'select', select => {
+    for (let k = 8; k <= 14; k++) makeElem(select, 'option', opt => {
+      let bufferSize = 2 ** k
+      opt.value = bufferSize
+      opt.textContent = '\u2005' + bufferSize
+    })
+    select.title = 'Buffer size (how many sample points are generated and processed at once)'
+    select.value = state.playerConfig.bufferSize
+    select.addEventListener('change', () => {
+      let bufferSize = select.value
+      state.playerConfig.bufferSize = bufferSize
+      if (state.player) state.player.recreate()
+      localStorage['playgen:bufferSize'] = bufferSize
+    })
+  })
+}
+
+function createGraphButton(parent) {
+  function resetGraph(useGraph) {
+    let canv = document.getElementById('oscilloscope')
+    if (useGraph) {
+      if (!canv) {
+        canv = document.createElement('canvas')
+        canv.id = 'oscilloscope'
+        state.playerConfig.graphParams.canvas = canv
+        canv.width = state.playerConfig.graphParams.w
+        canv.height = state.playerConfig.graphParams.h
+        document.body.appendChild(canv)
+      }
+    }
+    if (canv) canv.hidden = !useGraph
+  }
+  makeElem(parent, 'button', e => {
+    e.textContent = '📈'
+    e.title = 'Toggle wave graph output'
+    e.addEventListener('click', () => {
+      let useGraph = !state.playerConfig.useGraph
+      state.playerConfig.useGraph = useGraph
+      resetGraph(useGraph)
+    })
+  })
+  resetGraph(state.playerConfig.useGraph)
 }
 
 // --- key handling
