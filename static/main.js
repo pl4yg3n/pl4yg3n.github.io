@@ -136,22 +136,32 @@ const state = {
     bufferSize: 1 << Math.min(Math.max(Math.log2(+params['buffer'] || localStorage['playgen:bufferSize']) || 12, 8), 14),
     repeatCount: (x => x === true ? -1 : +x)(params['repeat']) || null,
     smoothing: Math.abs(+params['smoothing'] || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
+
     speed: Math.abs(+params['speed'] || 1),
-    speedStep: 2 ** (1/8),
+    speedExpStep: 1/8,
+    speedExpMin: -3,
+    speedExpMax: 3,
+    speedExpPrecision: 1/32,
+
     volume: Math.min(+params['volume'] || 0, 0),
     volumeStep: 250,
+    volumeMin: -4000,
     volumeMax: 0,
+    volumePrecision: 1,
+
     rewindStepSeconds: 5,
     rewindTailSeconds: 20,
+    seekPrecision: 0.1,
+
     sequentially: !!params['seq'],
     autoplay: !!params['autoplay'],
     restoreOnRefreshExpireMs: 3600000, // 1h
-    seekBarAccuracy: 10,
     tickFactor: 1 / 3,
     useGraph: !!params['graph'],
     graphParams: {
       w: 2048,
       h: 320,
+      lineWidth: 1.5,
     }
   },
   player: null,
@@ -788,26 +798,6 @@ function assignKeyboardControls() {
     if (!state.player || !state.player.currentPlayingNode) return
     state.player.setCurrentSeconds(0)
   }
-  state.keyDownListeners['ArrowUpAlt'] = () => {
-    state.playerConfig.speed *= state.playerConfig.speedStep
-  }
-  state.keyDownListeners['ArrowDownAlt'] = () => {
-    state.playerConfig.speed /= state.playerConfig.speedStep
-  }
-  state.keyDownListeners['SlashAlt'] = () => {
-    state.playerConfig.speed = 1
-  }
-  state.keyDownListeners['Minus'] = () => {
-    state.playerConfig.volume -= state.playerConfig.volumeStep
-    state.player.setVolumeGainMillibells(state.playerConfig.volume)
-  }
-  state.keyDownListeners['Equal'] = () => {
-    state.playerConfig.volume += state.playerConfig.volumeStep
-    if (state.playerConfig.volume > state.playerConfig.volumeMax) {
-      state.playerConfig.volume = state.playerConfig.volumeMax
-    }
-    state.player.setVolumeGainMillibells(state.playerConfig.volume)
-  }
 }
 
 function createSeekBar(row) {
@@ -818,7 +808,7 @@ function createSeekBar(row) {
     bar.id = 'seekbar'
     state.seekbar = bar
     bar.oninput = () => {
-      let t = bar.value / state.playerConfig.seekBarAccuracy
+      let t = bar.value * state.playerConfig.seekPrecision
       state.player.setCurrentSeconds(t)
     }
   })
@@ -847,7 +837,7 @@ function durationToString(t) {
 
 function resetProgress() {
   let duration = state.player.getTotalSeconds()
-  state.seekbar.max = Math.ceil(duration * state.playerConfig.seekBarAccuracy)
+  state.seekbar.max = Math.ceil(duration / state.playerConfig.seekPrecision)
   state.seekbar.min = 0
   state.seekbar.value = 0
   state.progressRow.hidden = false
@@ -857,7 +847,7 @@ function resetProgress() {
 
 function updateProgress() {
   let t = state.player.getCurrentSeconds()
-  state.seekbar.value = Math.round(t * state.playerConfig.seekBarAccuracy)
+  state.seekbar.value = Math.round(t / state.playerConfig.seekPrecision)
   state.progressNow.textContent = durationToString(t)
 }
 
@@ -901,12 +891,96 @@ function createOptionalControls(parent) {
       summary.textContent = '···'
       summary.title = 'More options...'
     })
+    makeElem(parent, 'div', createVolumeBar)
+    makeElem(parent, 'div', createSpeedBar)
     makeElem(parent, 'div', parent => {
       createFilterSelect(parent)
       createGraphButton(parent)
       createBufferSelect(parent)
     })
   })
+}
+
+function createVolumeBar(row) {
+  createRangeBar(
+    row,
+    '🔈 🔉 🔊',
+    'Volume',
+    v => {if (state.player) state.player.setVolumeGainMillibells(v)},
+    () => state.playerConfig.volume,
+    v => state.playerConfig.volume = v,
+    state.playerConfig.volumeMin,
+    state.playerConfig.volumeMax,
+    state.playerConfig.volumeStep,
+    state.playerConfig.volumePrecision,
+    'Minus,Equal,Backslash'
+  )
+}
+
+function createSpeedBar(row) {
+  createRangeBar(
+    row,
+    '🐌 🐢 🐇 🐎 🚀',
+    'Playback speed',
+    null,
+    () => Math.log2(state.playerConfig.speed),
+    v => state.playerConfig.speed = 2 ** v,
+    state.playerConfig.speedExpMin,
+    state.playerConfig.speedExpMax,
+    state.playerConfig.speedExpStep,
+    state.playerConfig.speedExpPrecision,
+    'ArrowDownAlt,ArrowUpAlt,SlashAlt'
+  )
+}
+
+function createRangeBar(row, iconSet, title, apply, getConfig, setConfig, min, max, step, precision, keys) {
+  iconSet = iconSet.split(' ')
+  row.className = 'range-row'
+  let marker = makeElem(row, 'span', marker => {
+    marker.className = 'range-icon'
+    marker.role = 'button'
+    marker.title = 'Reset ' + title.toLowerCase() + ' to default'
+    marker.onclick = reset
+  })
+  let input = makeElem(row, 'input', input => {
+    input.type = 'range'
+    input.min = min / precision
+    input.max = max / precision
+    input.title = title
+    input.oninput = () => {
+      setConfig(input.value * precision)
+      resetValue()
+    }
+  })
+  makeElem(row, 'span', marker => {
+    marker.className = 'range-spacer'
+    marker.textContent = iconSet[iconSet.length - 1]
+  })
+  function resetInput() {
+    input.value = getConfig() / precision
+    resetValue()
+  }
+  function resetValue() {
+    if (apply) apply(getConfig())
+    let normed = (input.value - input.min) / (input.max - input.min)
+    let icon = iconSet[Math.min(Math.max(Math.floor(normed * iconSet.length), 0), iconSet.length - 1)]
+    marker.textContent = icon
+  }
+  function reset() {
+    setConfig(0)
+    resetInput()
+  }
+  resetInput()
+  keys = keys.split(',')
+  state.keyDownListeners[keys[0]] = () => {
+    setConfig(Math.max(getConfig() - step, min))
+    resetInput()
+  }
+  state.keyDownListeners[keys[1]] = () => {
+    setConfig(Math.min(getConfig() + step, max))
+    resetInput()
+  }
+  state.keyDownListeners[keys[2]] = reset
 }
 
 function createFilterSelect(parent) {

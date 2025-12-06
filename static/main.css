@@ -141,6 +141,18 @@ input[type="range"]::-moz-range-thumb {
   cursor: grabbing;
 }
 
+.range-icon {
+  padding: 0.2em 0.3em 0.4em;
+  display: inline-block;
+  cursor: pointer;
+}
+.range-spacer {
+  padding: 0 0.3em;
+  display: inline-block;
+  visibility: hidden;
+  height: 0.1em;
+}
+
 /* more options */
 
 #more-options {

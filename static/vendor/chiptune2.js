@@ -314,6 +314,7 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
           let c = canv.getContext('2d')
           c.clearRect(0, 0, w, h)
           c.globalCompositeOperation = 'screen'
+          c.lineWidth = config.graphParams.lineWidth
           for (let l of Object.values(lines)) {
             c.beginPath()
             let scaleH = (l.oh || 0.5) * h
