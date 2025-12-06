@@ -271,12 +271,19 @@ async function enqMa(id, solid=2) {
   })
 }
 
+function getTimeParamOnce() {
+  let t = urlParams['t']
+  if (!t) return
+  delete urlParams['t']
+  return t
+}
+
 async function enqEntry(e, solid=1, customMetadata) {
   return addToQueue({
     e,
     src: urlConfig.collectionUrlRoot + urlConfig.musicPathLocal + e.path.replaceAll('%', '%25').replaceAll('#', '%23'),
     color: category_to_color(e.c, e.q, e.m),
-    insn: {start: e.tags['t:start'], end: e.tags['t:end'], repeat: e.tags['repeat']},
+    insn: {start: e.tags['t:start'], t: getTimeParamOnce(), end: e.tags['t:end'], repeat: e.tags['repeat']},
     id: e.md5.slice(0, 10),
     idMa: +e.tags['id:ma'] || null,
     solid,
@@ -629,7 +636,7 @@ function ready() {
   withElem('base-count', e => e.textContent = playlists.accepted.length)
   withElem('supported-exts', e => e.textContent = playableExts.join(', '))
   // enqueue referenced music
-  if (urlParams['id'] && urlParams['id'].length) urlParams['id'].forEach(enqById)
+  if (urlParams['id']) urlParams['id'].forEach(enqById)
   // make keybinds in help functional
   document.querySelectorAll('kbd[data]').forEach(elem => {
     let listener = state.keyDownListeners[elem.getAttribute('data')]
@@ -998,6 +1005,7 @@ function parseUrlParams() {
       }
     }
   })
+  if (!params.id.length) delete params.id
   return params
 }
 
