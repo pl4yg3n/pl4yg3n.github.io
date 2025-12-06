@@ -167,6 +167,15 @@ input[type="range"]::-moz-range-thumb {
   min-height: 10em;
 }
 
+button.false::before {
+  content: '\274e\00a0';
+  filter: grayscale(1) brightness(0.7) contrast(2.5) brightness(1.2);
+}
+button.true::before {
+  content: '\2705\00a0';
+  filter: brightness(0.7) contrast(2.5) brightness(1.2);
+}
+
 /* animations */
 
 @keyframes sqew {

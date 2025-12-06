@@ -428,9 +428,11 @@ async function displayMetadata(q) {
 function copyIdLink(shareButton) {
   let id = shareButton._id
   if (!id) return false
-  let urlPrefix = location.origin + location.pathname + '?id='
+  let url = location.origin + location.pathname + '?id=' + id
+  if (state.playerConfig.repeatCount == -1) url += '&repeat'
+  if (state.playerConfig.speed != 1) url += '&speed=' + state.playerConfig.speed
   try {
-    navigator.clipboard.writeText(urlPrefix + id)
+    navigator.clipboard.writeText(url)
   } catch(err) {
     shareButton.textContent = shareButton.getAttribute('data-fail')
     return false
@@ -894,6 +896,10 @@ function createOptionalControls(parent) {
     makeElem(parent, 'div', createVolumeBar)
     makeElem(parent, 'div', createSpeedBar)
     makeElem(parent, 'div', parent => {
+      createLoopCheckbox(parent)
+      createSeqCheckbox(parent)
+    })
+    makeElem(parent, 'div', parent => {
       createFilterSelect(parent)
       createGraphButton(parent)
       createBufferSelect(parent)
@@ -981,6 +987,46 @@ function createRangeBar(row, iconSet, title, apply, getConfig, setConfig, min, m
     resetInput()
   }
   state.keyDownListeners[keys[2]] = reset
+}
+
+function createLoopCheckbox(parent) {
+  createCheckbox(
+    parent,
+    state.playerConfig.repeatCount == -1,
+    v => {
+      state.playerConfig.repeatCount = -v
+      if (state.player) state.player.setRepeatCount(-v)
+    },
+    'Loop',
+    'Repeat current track endlessly, and seamlessly if track supports this'
+  )
+}
+
+function createSeqCheckbox(parent) {
+  createCheckbox(
+    parent,
+    !state.playerConfig.sequentially,
+    v => state.playerConfig.sequentially = !v,
+    'Shuffle',
+    'Pick random tracks from playlist. When disabled, same order as in collection index will always be used'
+  )
+}
+
+function createCheckbox(parent, initValue, setAndApply, name, title) {
+  makeElem(parent, 'button', button => {
+    button.textContent = name
+    button._value = initValue
+    button.title = title
+    function resetButton() {
+      button.className = button._value
+    }
+    button.onclick = () => {
+      button._value = !button._value
+      setAndApply(button._value)
+      resetButton()
+    }
+    resetButton()
+  })
 }
 
 function createFilterSelect(parent) {

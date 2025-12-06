@@ -61,6 +61,10 @@ ChiptuneJsPlayer.prototype.setVolumeGainMillibells = function(volume) {
   return libopenmpt._openmpt_module_set_render_param(this.currentPlayingNode.modulePtr, 1, volume)
 }
 
+ChiptuneJsPlayer.prototype.setRepeatCount = function(n) {
+  return libopenmpt._openmpt_module_set_repeat_count(this.currentPlayingNode.modulePtr, n)
+}
+
 ChiptuneJsPlayer.prototype.metadata = function() {
   let data = {}
   let keys = ['title', 'message_raw', 'type']
@@ -114,7 +118,7 @@ ChiptuneJsPlayer.prototype.play = function(buffer, insn = {}) {
   if (!insn) insn = {}
   this.stop()
   this.currentPlayingNode = this.createLibopenmptNode(buffer, this.config, insn)
-  libopenmpt._openmpt_module_set_repeat_count(this.currentPlayingNode.modulePtr, this.config.repeatCount || +insn['repeat'] || 0)
+  this.setRepeatCount(this.config.repeatCount || +insn['repeat'] || 0)
   this.setVolumeGainMillibells(this.config.volume)
   if (insn.t) this.setCurrentSeconds(insn.t)
   else if (insn.start) this.setCurrentSeconds(0)
