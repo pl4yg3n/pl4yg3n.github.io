@@ -128,11 +128,11 @@ const urlConfig = {
   musicPathLocal: 'data/',
   musicUrlModArchive: 'https://api.modarchive.org/downloads.php?moduleid=',
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
-  modArchiveMaxId: 212068,
+  modArchiveMaxId: 212315,
 }
 const state = {
   playerConfig: {
-    bufferSize: Math.abs(+urlParams['buffer'] || localStorage['playgen:bufferSize'] || 2 ** 14),
+    bufferSize: Math.abs(+urlParams['buffer'] || localStorage['playgen:bufferSize'] || 2 ** 12),
     repeatCount: (x => x === true ? -1 : +x)(urlParams['repeat']) || null,
     smoothing: Math.abs(+urlParams['smoothing'] || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
     speed: Math.abs(+urlParams['speed'] || 1),
@@ -170,9 +170,7 @@ async function launchPlayer() {
   await createFakeAudioToMakeMediaSessionWork()
   state.player = new ChiptuneJsPlayer(state.playerConfig)
   state.player.onEnded = playNext
-  state.player.onTick = () => {
-    updateProgress()
-  }
+  state.player.onTick = updateProgress
 }
 
 function hasNext() {
@@ -353,10 +351,10 @@ function playQueueItem(q, currentIndex) {
     state.player.play(q.buffer, q.insn)
     displayMetadata(q)
     resetProgress()
-    document.getElementById('more-options').parentElement.hidden = false
+    withElem('more-options', elem => elem.parentElement.hidden = false)
   } catch (err) {
     unlistQueueItem(q)
-    playOnError(err)
+    if (!q.customMetadata) playOnError(err)
   }
   // todo: unload buffer after another play
   //if (!q.persist) q.buffer = null
@@ -384,24 +382,28 @@ function unlistQueueItem(q) {
 
 async function displayMetadata(q) {
   let data = q.customMetadata || state.player.metadata()
-  document.getElementById('metadata-container').hidden = false
-  document.getElementById('output-id').textContent = q.id ? 'id: ' + q.id : (q.src || '')
-  let shareButton = document.getElementById('share-id')
-  shareButton.hidden = !q.id
-  if (q.id) {
-    shareButton._id = q.id
-    shareButton.textContent = shareButton.getAttribute('data-ready')
-  }
+  withElem('metadata-container', e => e.hidden = false)
+  withElem('output-id', e => e.textContent = q.id ? 'id: ' + q.id : (q.src || ''))
+  withElem('share-id', shareButton => {
+    shareButton.hidden = !q.id
+    if (q.id) {
+      shareButton._id = q.id
+      shareButton.textContent = shareButton.getAttribute('data-ready')
+    }
+  })
   let idMa = q.idMa
-  document.getElementById('output-id-ma').textContent = idMa ? 'ModArchive id: ' + idMa : ''
-  document.getElementById('output-id-ma').href = idMa ? urlConfig.pageUrlModArchive + idMa : ''
-  document.getElementById('output-title').textContent = data.title
-  document.getElementById('output-lore').textContent = data.message
+  withElem('output-id-ma', e => {
+    e.textContent = idMa ? 'ModArchive id: ' + idMa : ''
+    e.href = idMa ? urlConfig.pageUrlModArchive + idMa : ''
+  })
+  withElem('output-title', e => e.textContent = data.title)
+  withElem('output-lore', e => e.textContent = data.message)
   // allow resizing only if wide strings are present
-  let resizer = document.getElementById('metadata-resizer')
-  let isMessageWide = data.message.match(/.{23}/) || data.title.length >= 23
-  resizer.hidden = !isMessageWide
-  if (isMessageWide) resizer.onpointerdown = resizeInit
+  withElem('metadata-resizer', resizer => {
+    let isMessageWide = data.message.match(/.{23}/) || data.title.length >= 23
+    resizer.hidden = !isMessageWide
+    if (isMessageWide) resizer.onpointerdown = resizeInit
+  })
 }
 
 function copyIdLink(shareButton) {
@@ -448,7 +450,7 @@ async function playOnError(err) {
 }
 
 async function enqOnError(errorMessage) {
-  return enqEntry(pick(playlists.playable.filter(e => e.tags.error)), 0, {title:'Error!', message: errorMessage})
+  return enqEntry(pick(playlists.playable.filter(e => e.tags.error)), 0, {title: 'Error!', message: errorMessage})
 }
 
 // --- file dropping
@@ -624,8 +626,8 @@ function ready() {
     state.anim.enabled = !state.anim.enabled
     updateGraffitiAnim()
   })
-  document.getElementById('base-count').textContent = playlists.accepted.length
-  document.getElementById('supported-exts').textContent = playableExts.join(', ')
+  withElem('base-count', e => e.textContent = playlists.accepted.length)
+  withElem('supported-exts', e => e.textContent = playableExts.join(', '))
   // enqueue referenced music
   if (urlParams['id'] && urlParams['id'].length) urlParams['id'].forEach(enqById)
   // make keybinds in help functional
@@ -654,17 +656,31 @@ function isPlaying() {
   return state.player && state.player.currentPlayingNode && !state.player.currentPlayingNode.paused
 }
 
-// --- generating functional elements
+// --- element utils
 
-function makeElem(parent, name, init) {
-  let elem = document.createElement(name)
+function makeElem(parent, tag, init) {
+  let elem = document.createElement(tag)
   if (init) init(elem)
   if (parent) parent.appendChild(elem)
   return elem
 }
 
+function warnOnce(msg) {
+  if (!state.warns) state.warns = {}
+  if (state.warns[msg]) return
+  console.error(msg)
+  state.warns[msg] = true
+}
+
+function withElem(id, f) {
+  let elem = document.getElementById(id)
+  return elem ? f(elem) : warnOnce(`Failed to find element with id='${id}'`)
+}
+
+// --- generating controls
+
 function createControls() {
-  state.controls = makeElem(document.body, 'div', controls => {
+  makeElem(document.body, 'div', controls => {
     controls.className = 'controls'
     createBackButton(controls)
     createPauseButton(controls)
@@ -693,13 +709,6 @@ function createPauseButton(parent) {
       e.title = ['Play', 'Pause'][+isPlayingNow] + ' [Space]'
       updateGraffitiAnim()
       navigator.mediaSession.playbackState = isPlayingNow ? 'playing' : 'paused'
-      /*
-      let decoration = '::'
-      let titleElem = document.head.querySelector('title')
-      let titleRaw = titleElem.textContent.replaceAll(decoration, '').trim()
-      let decorationNow = decoration.repeat(isPlayingNow)
-      titleElem.textContent = decorationNow + ' ' + titleRaw + ' ' + decorationNow
-      */
     }
     e.addEventListener('click', action)
     state.resetPause()
@@ -792,6 +801,7 @@ function assignKeyboardControls() {
 
 function createSeekBar(row) {
   row.id = 'progress-row'
+  row.className = 'range-row'
   makeElem(row, 'input', bar => {
     bar.type = 'range'
     bar.id = 'seekbar'
@@ -932,12 +942,12 @@ function createGraphButton(parent) {
     let canv = document.getElementById('oscilloscope')
     if (useGraph) {
       if (!canv) {
-        canv = document.createElement('canvas')
-        canv.id = 'oscilloscope'
-        state.playerConfig.graphParams.canvas = canv
-        canv.width = state.playerConfig.graphParams.w
-        canv.height = state.playerConfig.graphParams.h
-        document.body.appendChild(canv)
+        canv = makeElem(document.body, 'canvas', canv => {
+          canv.id = 'oscilloscope'
+          state.playerConfig.graphParams.canvas = canv
+          canv.width = state.playerConfig.graphParams.w
+          canv.height = state.playerConfig.graphParams.h
+        })
       }
     }
     if (canv) canv.hidden = !useGraph
@@ -993,45 +1003,40 @@ function parseUrlParams() {
 
 // --- ambient coloring
 
-let ambientStyle = document.getElementById('ambient')
 function setPlayingStyle(q) {
   console.info('Playing:', q.e ? q.e.line : q.src)
   console.debug('Queue pos:', state.queue.indexOf(q) + 1, '/', state.queue.length)
   setAmbientColor(q.color ? q.color : '#aaa')
 }
 function setAmbientColor(ambientColor) {
-  ambientStyle.textContent = 'html{--ambient:'+ambientColor+';}'
+  withElem('ambient', style => style.textContent = 'html{--ambient:'+ambientColor+';}')
 }
 
 // --- animations
 
 function setAnimPeriod(period) {
-  document.getElementById('period').textContent = '.leaf{--period:'+period+'s;}'
+  withElem('period', style => style.textContent = '.leaf{--period:'+period+'s;}')
 }
 
-let graffiti = null
 const graffitiTextLoad = 'Loading'
 const graffitiTextDone = 'Playgen'
+const graffitiTextFail = '[error]'
 function createGraffiti() {
-  graffiti = document.createElement('pre')
-
-  let text = graffitiTextLoad
-
-  text.split('').forEach((c, i) => {
-    let e = document.createElement('span')
-    e.className = 'leaf'
-    e.textContent = c
-    e.style.animationDelay = -i / 8 + 's'
-    graffiti.appendChild(e)
+  makeElem(document.body, 'pre', graffiti => {
+    graffitiTextLoad.split('').forEach((c, i) => {
+      makeElem(graffiti, 'span', e => {
+        e.className = 'leaf'
+        e.textContent = c
+        e.style.animationDelay = -i / 8 + 's'
+      })
+    })
+    graffiti.id = 'graffiti'
   })
-  graffiti.className = 'graffiti'
-
-  document.body.appendChild(graffiti)
 }
 function updateGraffitiAnim() {
   let enabled = state.anim.enabled && isPlaying()
   if (enabled != state.anim.state) {
-    graffiti.classList[['add', 'remove'][+state.anim.state]]('waving')
+    withElem('graffiti', e => e.classList[['add', 'remove'][+state.anim.state]]('waving'))
     state.anim.state = enabled
   }
   if (enabled) {

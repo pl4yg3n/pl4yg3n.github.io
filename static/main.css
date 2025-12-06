@@ -18,7 +18,7 @@ html {
   overscroll-behavior: none;
 }
 
-html, .graffiti, input[type="text"], select, button {
+html, #graffiti, input[type="text"], select, button {
   text-shadow: #000 -0.08em -0.08em, #000 0.08em 0.08em, #000 -0.08em 0.08em, #000 0.08em -0.08em, #000 0.11em 0, #000 -0.11em 0, #000 0 0.11em, #000 0 -0.11em, #000 -0.1em -0.06em, #000 0.1em 0.06em, #000 -0.1em 0.06em, #000 0.1em -0.06em, #000 -0.06em -0.1em, #000 0.06em 0.1em, #000 -0.06em 0.1em, #000 0.06em -0.1em;
   font-family: monospace;
 }
@@ -27,7 +27,7 @@ body {
   margin: 0;
 }
 
-.graffiti {
+#graffiti {
   font-size: 54px;
   margin-top: 0.5em;
   display: inline-block;
@@ -60,9 +60,9 @@ button:active {
   background: rgba(0, 0, 0, 0.3);
 }
 
-/* progress row */
+/* range inputs */
 
-#progress-row {
+.range-row {
   width: 25em;
   max-width: 90vw;
   margin: 0.8em auto 0;
@@ -79,7 +79,7 @@ button:active {
 #t-end {
   float: right;
 }
-#seekbar {
+input[type="range"] {
   background: transparent;
   width: 100%;
   max-width: 18em;
@@ -91,15 +91,15 @@ button:active {
   opacity: 0.6;
 }
 @supports not (selector(::-moz-range-progress)) {
-#seekbar {
+input[type="range"] {
   appearance: none;
   overflow: hidden;
 }
-#seekbar::-webkit-slider-runnable-track {
+input[type="range"]::-webkit-slider-runnable-track {
   height: 100%;
   background: rgba(0, 0, 0, 0.2);
 }
-#seekbar::-webkit-slider-thumb {
+input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   background: #ccc;
   outline: 0.15em solid #000;
@@ -109,27 +109,29 @@ button:active {
   height: 100%;
   box-shadow: -100vw 0 0 100vw var(--foreground, #ccc);
 }
-#seekbar::-webkit-slider-thumb:active {
+input[type="range"]::-webkit-slider-thumb:active {
   cursor: grabbing;
 }
 }
-#seekbar::-moz-range-track {
+input[type="range"]::-moz-range-track {
   height: 100%;
   background: rgba(0, 0, 0, 0.2);
 }
-#seekbar::-moz-range-progress {
+input[type="range"]::-moz-range-progress {
   height: 100%;
   background: #0f0;
   background: var(--foreground, #ccc);
 }
-#seekbar::-moz-range-thumb {
-  opacity: 0;
+input[type="range"]::-moz-range-thumb {
   background: #ccc;
   border: 0.15em solid #000;
   border-radius: 0;
   width: 0.5em;
   height: 1em;
   cursor: grab;
+}
+#seekbar::-moz-range-thumb {
+  opacity: 0;
 }
 #seekbar::-moz-range-thumb:hover {
   opacity: 1;
