@@ -1,7 +1,8 @@
 ﻿'use strict'
 const libopenmpt = {}
 
-const urlParams = parseUrlParams()
+const params = parseUrlParams()
+initSession()
 
 // --- playing program config
 
@@ -132,21 +133,22 @@ const urlConfig = {
 }
 const state = {
   playerConfig: {
-    bufferSize: Math.abs(+urlParams['buffer'] || localStorage['playgen:bufferSize'] || 2 ** 12),
-    repeatCount: (x => x === true ? -1 : +x)(urlParams['repeat']) || null,
-    smoothing: Math.abs(+urlParams['smoothing'] || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
-    speed: Math.abs(+urlParams['speed'] || 1),
+    bufferSize: 1 << Math.min(Math.max(Math.log2(+params['buffer'] || localStorage['playgen:bufferSize']) || 12, 8), 14),
+    repeatCount: (x => x === true ? -1 : +x)(params['repeat']) || null,
+    smoothing: Math.abs(+params['smoothing'] || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
+    speed: Math.abs(+params['speed'] || 1),
     speedStep: 2 ** (1/8),
-    volume: Math.min(+urlParams['volume'] || 0, 0),
+    volume: Math.min(+params['volume'] || 0, 0),
     volumeStep: 250,
     volumeMax: 0,
     rewindStepSeconds: 5,
     rewindTailSeconds: 20,
-    sequentially: !!urlParams['seq'],
-    autoplay: !!urlParams['autoplay'],
+    sequentially: !!params['seq'],
+    autoplay: !!params['autoplay'],
+    restoreOnRefreshExpireMs: 3600000, // 1h
     seekBarAccuracy: 10,
     tickFactor: 1 / 3,
-    useGraph: !!urlParams['graph'],
+    useGraph: !!params['graph'],
     graphParams: {
       w: 2048,
       h: 320,
@@ -272,9 +274,9 @@ async function enqMa(id, solid=2) {
 }
 
 function getTimeParamOnce() {
-  let t = urlParams['t']
+  let t = params['t']
   if (!t) return
-  delete urlParams['t']
+  delete params['t']
   return t
 }
 
@@ -623,6 +625,8 @@ function selectSourceByName(name) {
   state.source = source
 }
 
+// --- finishing init
+
 function ready() {
   Array.from(graffiti.children).forEach((e, i) => e.textContent = graffitiTextDone[i])
   graffiti.addEventListener('click', () => {
@@ -636,7 +640,7 @@ function ready() {
   withElem('base-count', e => e.textContent = playlists.accepted.length)
   withElem('supported-exts', e => e.textContent = playableExts.join(', '))
   // enqueue referenced music
-  if (urlParams['id']) urlParams['id'].forEach(enqById)
+  if (params['id']) params['id'].forEach(enqById)
   // make keybinds in help functional
   document.querySelectorAll('kbd[data]').forEach(elem => {
     let listener = state.keyDownListeners[elem.getAttribute('data')]
@@ -873,7 +877,7 @@ function createModeSelect(parent) {
       localStorage['playgen:mode'] = p
     })
     // pre-select playlist mode from url params
-    let urlPlaylistModeParam = urlParams['pl']
+    let urlPlaylistModeParam = params['pl']
     if (urlPlaylistModeParam) {
       try {
         selectPlaylist(urlPlaylistModeParam)
@@ -1007,6 +1011,47 @@ function parseUrlParams() {
   })
   if (!params.id.length) delete params.id
   return params
+}
+
+// --- session management
+
+function saveSession() {
+  if (!state.player) return
+  let q = state.queue[state.queueIndex]
+  if (!q || !q.id || q.customMetadata) return
+  localStorage['playgen:session'] = JSON.stringify({
+    id: q.id,
+    t: state.player.getCurrentSeconds(),
+    speed: state.playerConfig.speed,
+    volume: state.playerConfig.volume,
+    autoplay: isPlaying(),
+    exp: Date.now() + state.playerConfig.restoreOnRefreshExpireMs
+  })
+}
+
+function loadSession() {
+  if (!params['id'] && !params['t']) setSession(localStorage['playgen:session'])
+  delete localStorage['playgen:session']
+}
+
+function setSession(s) {
+  if (!s) return
+  try {
+    s = JSON.parse(s)
+    if (s.exp && Date.now() > s.exp) return
+    params.id = [s.id]
+    params.t = s.t
+    params.speed = s.speed
+    params.volume = s.volume
+    params.autoplay = s.autoplay
+  } catch(err) {
+    console.error('Invalid session JSON:', err)
+  }
+}
+
+function initSession() {
+  loadSession()
+  window.addEventListener('beforeunload', saveSession)
 }
 
 // --- ambient coloring
