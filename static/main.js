@@ -477,6 +477,7 @@ async function enqOnError(errorMessage) {
 // --- file dropping
 
 function processDroppedFiles(files) {
+  files = Array.from(files)
   console.debug('Files dropped:', files.map(file => file.name))
   if (!files || !files[0]) return
   if (!state.fileReader) {
@@ -520,7 +521,7 @@ function interceptEvent(e) {
 window.ondragover = interceptEvent
 window.ondrop = e => {
   interceptEvent(e)
-  processDroppedFiles(Array.from(e.dataTransfer.files))
+  processDroppedFiles(e.dataTransfer.files)
 }
 
 // --- init index and playlists
@@ -898,6 +899,7 @@ function createOptionalControls(parent) {
     makeElem(parent, 'div', parent => {
       createLoopCheckbox(parent)
       createSeqCheckbox(parent)
+      createFileButton(parent)
     })
     makeElem(parent, 'div', parent => {
       createFilterSelect(parent)
@@ -926,7 +928,7 @@ function createVolumeBar(row) {
 function createSpeedBar(row) {
   createRangeBar(
     row,
-    '🐌 🐢 🐇 🐎 🚀',
+    '🧊 🐌 🐢 🐇 🐎 ✈️ 🚀',
     'Playback speed',
     null,
     () => Math.log2(state.playerConfig.speed),
@@ -1026,6 +1028,31 @@ function createCheckbox(parent, initValue, setAndApply, name, title) {
       resetButton()
     }
     resetButton()
+  })
+}
+
+function createFileButton(parent) {
+  makeElem(parent, 'button', button => {
+    button.textContent = 'File'
+    button.title = 'Select your module tracking music files to play (or just drag and drop them)'
+    button.onclick = () => {
+      let input = makeElem(parent, 'input', input => {
+        input.type = 'File'
+        input.accept = playableExts.map(x => '.' + x).join(',')
+        input.multiple = true
+        input.hidden = true
+      })
+      function finalize() {
+        parent.removeChild(input)
+      }
+      function pickFiles() {
+        if (input.files.length) processDroppedFiles(input.files)
+        finalize()
+      }
+      input.addEventListener('cancel', finalize)
+      input.addEventListener('change', pickFiles)
+      input.click()
+    }
   })
 }
 

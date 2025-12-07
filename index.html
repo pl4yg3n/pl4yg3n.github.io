@@ -39,8 +39,8 @@
   </details>
   <details id="about-container" class="overlay" name="overlay">
     <summary>About</summary>
-    <img src="./static/img/pkey.svg" alt="Playgen Logo" class="side-logo"
-    onmousedown="this.r=(this.r||0)+1;this.style.transform='rotate('+this.r+'turn)';event.preventDefault()">
+    <img src="./static/img/pkey.svg" alt="Playgen Logo, a key-shaped letter P, which also slightly resembles a flipped musical note"
+    class="side-logo" onmousedown="this.r=(this.r||0)+1;this.style.transform='rotate('+this.r+'turn)';event.preventDefault()">
     <div id="about" class="overlay-pad">
       <p>
         Playgen (pl4yg3n) is keygen music radio-like player.
@@ -66,6 +66,9 @@
         Here's a mode to play random music directly from full ModArchive collection (over 170K tracks!).
       </p>
       <p>
+        Share this website with your friends if you like it!
+      </p>
+      <p>
         This project was inspired by <a href="https://keygen-fm.ru" target="_blank">Keygen FM</a> internet radio stream.
         However, Keygen FM was a server-side ShoutCast broadcast (and it had just around 700 tracks),
         but here on Playgen you can skip music, select playlist and more!
@@ -73,10 +76,16 @@
       <h3>Features</h3>
       <ul>
         <li>
-          You can even play your files, just drag and drop them! (supported formats: <span id="supported-exts">xm, mod, s3m, it</span>)
+          In "Music info", you can copy link to current track, also you can see internal texts extracted from music file there
         </li>
         <li>
-          There is a lot of keyboard shortcuts (for mobile, just tap on them here like buttons)
+          Press "···" to show additional controls: volume, playback speed, loop and more options!
+        </li>
+        <li>
+          You can even play your files, just drag and drop them, or select using "File" button (supported formats: <span id="supported-exts">xm, mod, s3m, it</span>)
+        </li>
+        <li>
+          There is a lot of keyboard shortcuts (for mobile, you can tap on them here)
           <ul>
             <li>
               Press <kbd data="Space">Space</kbd> to toggle pause,
@@ -93,7 +102,8 @@
             </li>
             <li>
               To decrease volume, press <kbd data="Minus">-</kbd>,
-              and press <kbd data="Equal">+</kbd> to increase it back (volume is already at max by default)
+              and press <kbd data="Equal">+</kbd> to increase it back (volume is already at max by default,
+              use <kbd data="Backslash">\</kbd> to reset to max)
             </li>
           </ul>
         </li>
@@ -104,9 +114,6 @@
         <li>
           Above controls, click "Playgen" graffiti to toggle some animation
           (disabled by default because the animation consumed more CPU than music player did, lol)
-        </li>
-        <li>
-          You can see music metadata on the left, these texts are extracted from the music files themselves
         </li>
       </ul>
       <h3>Implementation details</h3>
