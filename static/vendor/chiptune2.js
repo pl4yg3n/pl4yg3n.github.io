@@ -65,6 +65,10 @@ ChiptuneJsPlayer.prototype.setRepeatCount = function(n) {
   return libopenmpt._openmpt_module_set_repeat_count(this.currentPlayingNode.modulePtr, n)
 }
 
+ChiptuneJsPlayer.prototype.getRepeatCount = function() {
+  return libopenmpt._openmpt_module_get_repeat_count(this.currentPlayingNode.modulePtr)
+}
+
 ChiptuneJsPlayer.prototype.metadata = function() {
   let data = {}
   let keys = ['title', 'message_raw', 'type']
@@ -341,8 +345,14 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
       framesRendered += framesPerChunk
     }
     if (ended) {
-      this.stop()
-      processNode.player.onEnded()
+      let repeatCount = this.player.getRepeatCount()
+      if (repeatCount == -1) {
+        // force repeat if repeating endlessly
+        this.player.setCurrentSeconds(0)
+      } else {
+        this.stop()
+        processNode.player.onEnded()
+      }
     } else {
       processNode.player.onTick()
     }
