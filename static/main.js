@@ -133,31 +133,38 @@ const urlConfig = {
 }
 const state = {
   playerConfig: {
-    bufferSize: 1 << Math.min(Math.max(Math.log2(+params['buffer'] || localStorage['playgen:bufferSize']) || 12, 8), 14),
-    repeatCount: (x => x === true ? -1 : +x)(params['repeat']) || null,
-    smoothing: Math.abs(+params['smoothing'] || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
+    bufferSize: 1 << Math.min(Math.max(Math.log2(+params.buffer || localStorage['playgen:bufferSize']) || 12, 8), 14),
+    smoothing: Math.abs(+params.smoothing || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
 
-    speed: Math.abs(+params['speed'] || 1),
+    // speed is a multiplier, but its changes are in log2 scale
+    speed: Math.abs(+params.speed || 1),
     speedExpStep: 1/8,
     speedExpMin: -3,
     speedExpMax: 3,
     speedExpPrecision: 1/32,
 
-    volume: Math.min(+params['volume'] || 0, 0),
+    // all volume in relative millibells
+    volume: Math.min(+params.volume || 0, 0),
     volumeStep: 250,
     volumeMin: -4000,
     volumeMax: 0,
     volumePrecision: 1,
+    volumeAddForLowVolumeTracks: 500,
 
+    // seek/rewind in seconds
     rewindStepSeconds: 5,
     rewindTailSeconds: 20,
     seekPrecision: 0.1,
 
-    sequentially: !!params['seq'],
-    autoplay: !!params['autoplay'],
+    repeatCount: (x => x === true ? -1 : +x)(params.repeat) || null,
+    sequentially: !!params.seq,
+    autoplay: !!params.autoplay,
     restoreOnRefreshExpireMs: 3600000, // 1h
+    restoreOnRefreshOnlyIfPlaying: false,
+
+    bubbleIntroMs: 750,
     tickFactor: 1 / 3,
-    useGraph: !!params['graph'],
+    useGraph: !!params.graph,
     graphParams: {
       w: 2048,
       h: 320,
@@ -176,14 +183,26 @@ const state = {
   keyDownListeners: {},
 }
 
-// --- playing logic
+// --- playing logic init
 
 async function launchPlayer() {
+  setMediaIcon()
   await createFakeAudioToMakeMediaSessionWork()
   state.player = new ChiptuneJsPlayer(state.playerConfig)
   state.player.onEnded = playNext
   state.player.onTick = updateProgress
 }
+
+function setMediaIcon() {
+  navigator.mediaSession.metadata = new MediaMetadata({
+    artwork: [
+      {src: './static/img/pkey.svg', sizes: '256x256,512x512', type: 'image/svg+xml'},
+      {src: './static/img/pkey256.png', sizes: '256x256', type: 'image/png'},
+    ]
+  })
+}
+
+// --- switching tracks
 
 function hasNext() {
   return state.queueIndex + 1 < state.queue.length
@@ -191,13 +210,7 @@ function hasNext() {
 
 async function playNext() {
   if (!state.player) await launchPlayer()
-  navigator.mediaSession.metadata = new MediaMetadata({
-    artwork: [
-      {src: './static/img/pkey.svg', sizes: '256x256,512x512', type: 'image/svg+xml'},
-      {src: './static/img/pkey256.png', sizes: '256x256', type: 'image/png'},
-    ]
-  })
-  loadNextIfNeeded()
+  enqNextIfNeeded() // if nothing is enqueued to play, need to add something
   state.queueIndex++
   return playQueue()
 }
@@ -213,18 +226,24 @@ async function playBack() {
   return playQueue()
 }
 
-function loadNextIfNeeded(hint) {
-  if (!hasNext()) loadNext(hint)
+function enqNextIfNeeded(hint) {
+  if (!hasNext()) enqNext(hint)
 }
 
-async function loadNext(hint) {
+function isPlaying() {
+  return state.player && state.player.currentPlayingNode && !state.player.currentPlayingNode.paused
+}
+
+// --- queue management
+
+async function enqNext(hint) {
   if (!state.player) return
   if (!state.source) return
   if (typeof state.source == 'string') {
     if (state.source == 'ma:random') {
       return enqMa(0, 0).catch(err => {
         if (err == 'Invalid response') {
-          loadNextIfNeeded()
+          enqNextIfNeeded()
         } else {
           throw err
         }
@@ -239,8 +258,8 @@ async function loadNext(hint) {
 function pick(arr, hint) {
   if (arr.length == 0) throw 'Cannot pick from empty array!'
   if (state.playerConfig.sequentially) {
-    if (hint) {
-      let index = arr.indexOf(hint) + 1
+    if (hint && hint.e) {
+      let index = arr.indexOf(hint.e) + 1
       if (index == arr.length) {
         index = 0
       }
@@ -252,13 +271,13 @@ function pick(arr, hint) {
 }
 
 async function enqLocal(query) {
-  return enqEntry(pick(playlists.full.filter(x=>x.md5==query || x.title.includes(query))))
+  return enqEntry(pick(playlists.full.filter(x => x.md5 == query || x.title.includes(query))))
     .then(q => {console.info('Enqueued:', q); return q})
 }
 
-async function enqById(id) {
-  if (id.startsWith('ma:')) return enqMa(id.slice(3), 3)
-  return enqEntry(pick(playlists.full.filter(x=>x.md5.startsWith(id))), 3)
+async function enqById(id, solid=1) {
+  if (id.startsWith('ma:')) return enqMa(id.slice(3), solid)
+  return enqEntry(pick(playlists.full.filter(x => x.md5.startsWith(id))), solid)
 }
 
 async function enqUrl(url, color='#999', solid=2) {
@@ -284,9 +303,9 @@ async function enqMa(id, solid=2) {
 }
 
 function getTimeParamOnce() {
-  let t = params['t']
+  let t = params.t
   if (!t) return
-  delete params['t']
+  delete params.t
   return t
 }
 
@@ -295,7 +314,13 @@ async function enqEntry(e, solid=1, customMetadata) {
     e,
     src: urlConfig.collectionUrlRoot + urlConfig.musicPathLocal + e.path.replaceAll('%', '%25').replaceAll('#', '%23'),
     color: category_to_color(e.c, e.q, e.m),
-    insn: {start: e.tags['t:start'], t: getTimeParamOnce(), end: e.tags['t:end'], repeat: e.tags['repeat']},
+    insn: {
+      start: e.tags['t:start'],
+      t: getTimeParamOnce(),
+      end: e.tags['t:end'],
+      repeat: e.tags['repeat'],
+      gainMillibells: (e.tags['d:lvol'] || 0) * state.playerConfig.volumeAddForLowVolumeTracks,
+    },
     id: e.md5.slice(0, 10),
     idMa: +e.tags['id:ma'] || null,
     solid,
@@ -311,6 +336,7 @@ function smashQueue(force) {
     if (!hasNext()) return true
     unlistQueueItem(last)
   }
+  return force > 1
 }
 
 async function addToQueue(q) {
@@ -378,7 +404,7 @@ function playQueueItem(q, currentIndex) {
   // todo: unload buffer after another play
   //if (!q.persist) q.buffer = null
   state.resetPause()
-  loadNextIfNeeded(q.e)
+  enqNextIfNeeded(q)
   return q
 }
 
@@ -487,7 +513,6 @@ function processDroppedFiles(files) {
     reader.onload = () => {
       console.debug('Finished reading file:', reader.fileName)
       try {
-        let wasNext = hasNext()
         addToQueue({
           buffer: reader.result,
           src: reader.fileName,
@@ -495,7 +520,6 @@ function processDroppedFiles(files) {
           solid: 2,
           persist: true,
         })
-        if (!wasNext) playNext()
       } catch (err) {
         playOnError(err)
       }
@@ -589,7 +613,7 @@ state.hourlyRefresh = null
 function selectPlaylist(name) {
   selectSourceByName(name)
   smashQueue(1)
-  loadNextIfNeeded()
+  enqNextIfNeeded()
 }
 
 function selectSourceByName(name) {
@@ -614,6 +638,7 @@ function selectSourceByName(name) {
     if (state.source == source) return
     console.info('Playlist switched to: ' + name)
     state.source = source
+    state.sourceName = name
     return
   }
   // define lazy playlist function
@@ -636,12 +661,15 @@ function selectSourceByName(name) {
   if (state.source == source) return
   console.info('Playlist switched to: ' + name + ' (' + source.length + ' items)')
   state.source = source
+  state.sourceName = name
 }
 
-// --- finishing init
+// --- finishing init (todo: refactor this all)
 
 function ready() {
+  // graffiti: set to ready
   Array.from(graffiti.children).forEach((e, i) => e.textContent = graffitiTextDone[i])
+  // graffiti: add actions on click
   graffiti.addEventListener('click', () => {
     if (!state.player) {
       playNext()
@@ -650,11 +678,12 @@ function ready() {
     state.anim.enabled = !state.anim.enabled
     updateGraffitiAnim()
   })
+  // about: set dynamic values
   withElem('base-count', e => e.textContent = playlists.accepted.length)
   withElem('supported-exts', e => e.textContent = playableExts.join(', '))
-  // enqueue referenced music
-  if (params['id']) params['id'].forEach(enqById)
-  // make keybinds in help functional
+  // params.id: enqueue referenced music
+  if (params.id) params.id.forEach(enqById)
+  // about: make keybinds in help functional
   document.querySelectorAll('kbd[data]').forEach(elem => {
     let listener = state.keyDownListeners[elem.getAttribute('data')]
     if (!listener) console.error(`Listener '${elem.getAttribute('data')}' specified in <kbd> is not specified!`)
@@ -665,6 +694,7 @@ function ready() {
     })
     elem.role = 'button'
   })
+  // params.autoplay: launch if possible
   if (state.playerConfig.autoplay) {
     // Wasm doesn't load in order so need to wait until it loads and only then start
     // todo: ensure it in launchPlayer
@@ -674,10 +704,6 @@ function ready() {
     }
     playWhenReady()
   }
-}
-
-function isPlaying() {
-  return state.player && state.player.currentPlayingNode && !state.player.currentPlayingNode.paused
 }
 
 // --- element utils
@@ -709,7 +735,6 @@ function createControls() {
     createBackButton(controls)
     createPauseButton(controls)
     createNextButton(controls)
-    assignKeyboardControls()
     createModeSelect(controls)
     makeElem(controls, 'div', progressRow => createSeekBar(progressRow))
     createOptionalControls(controls)
@@ -717,90 +742,84 @@ function createControls() {
 }
 
 function createPauseButton(parent) {
-  function action() {
-    if (!state.player) {
-      playNext()
-    } else {
-      state.player.togglePause()
-    }
-    state.resetPause()
-  }
-
-  makeElem(parent, 'button', e => {
-    state.resetPause = () => {
-      let isPlayingNow = isPlaying()
-      e.textContent = ['I>', 'II'][+isPlayingNow]
-      e.title = ['Play', 'Pause'][+isPlayingNow] + ' [Space]'
-      updateGraffitiAnim()
-      navigator.mediaSession.playbackState = isPlayingNow ? 'playing' : 'paused'
-    }
-    e.addEventListener('click', action)
-    state.resetPause()
-  })
-  navigator.mediaSession.setActionHandler('play', () => {
-    console.log('Media Event: play')
-    action()
-  })
-  navigator.mediaSession.setActionHandler('pause', () => {
-    console.log('Media Event: pause')
-    action()
-  })
-  state.keyDownListeners['Space'] = action
+  createPlayButton(
+    parent,
+    e => {
+      state.resetPause = () => {
+        let isPlayingNow = isPlaying()
+        e.textContent = ['I>', 'II'][+isPlayingNow]
+        e.title = ['Play', 'Pause'][+isPlayingNow] + ' [Space]'
+        updateGraffitiAnim()
+        navigator.mediaSession.playbackState = isPlayingNow ? 'playing' : 'paused'
+      }
+      state.resetPause()
+    },
+    () => {
+      if (!state.player) {
+        playNext()
+      } else {
+        state.player.togglePause()
+      }
+      state.resetPause()
+    },
+    ['play', 'pause'],
+    'Space'
+  )
 }
 
 function createNextButton(parent) {
-  function action() {
-    playNext()
-    state.resetPause()
-  }
-
-  makeElem(parent, 'button', e => {
-    e.textContent = '>>'
-    e.title = 'Next [Arrow Right]'
-    e.addEventListener('click', action)
-  })
-  navigator.mediaSession.setActionHandler('nexttrack', () => {
-    console.log('Media Event: nexttrack')
-    action()
-  })
-  state.keyDownListeners['ArrowRight'] = action
+  createPlayButton(
+    parent,
+    e => {
+      e.textContent = '>>'
+      e.title = 'Next [Arrow Right]'
+    },
+    () => {
+      playNext()
+      state.resetPause()
+    },
+    ['nexttrack'],
+    'ArrowRight'
+  )
 }
 
 function createBackButton(parent) {
-  function action() {
-    playBack()
-    state.resetPause()
-  }
-
-  makeElem(parent, 'button', e => {
-    e.textContent = '<<'
-    e.title = 'Back [Arrow Left]'
-    e.addEventListener('click', action)
-  })
-  navigator.mediaSession.setActionHandler('previoustrack', () => {
-    console.log('Media Event: previoustrack')
-    action()
-  })
-  state.keyDownListeners['ArrowLeft'] = action
+  createPlayButton(
+    parent,
+    e => {
+      e.textContent = '<<'
+      e.title = 'Back [Arrow Left]'
+    },
+    () => {
+      playBack()
+      state.resetPause()
+    },
+    ['previoustrack'],
+    'ArrowLeft'
+  )
 }
 
-function assignKeyboardControls() {
-  state.keyDownListeners['ArrowRightAlt'] = () => {
+function createPlayButton(parent, init, action, mediaEvents, key) {
+  makeElem(parent, 'button', e => {
+    init(e)
+    e.addEventListener('click', action)
+  })
+  mediaEvents.forEach(eventName => navigator.mediaSession.setActionHandler(eventName, () => {
+    console.debug('Media Event: ' + eventName)
+    action()
+  }))
+  state.keyDownListeners[key] = action
+}
+
+function assignSeekKeybinds() {
+  let setSeekKeybind = (key, f) => state.keyDownListeners[key] = () => {
     if (!state.player || !state.player.currentPlayingNode) return
-    state.player.setCurrentSeconds(state.player.getCurrentSeconds() + state.playerConfig.rewindStepSeconds)
+    state.player.setCurrentSeconds(f())
   }
-  state.keyDownListeners['ArrowLeftAlt'] = () => {
-    if (!state.player || !state.player.currentPlayingNode) return
-    state.player.setCurrentSeconds(state.player.getCurrentSeconds() - state.playerConfig.rewindStepSeconds)
-  }
-  state.keyDownListeners['ArrowRightShift'] = () => {
-    if (!state.player || !state.player.currentPlayingNode) return
-    state.player.setCurrentSeconds(state.player.getTotalSeconds() - state.playerConfig.rewindTailSeconds)
-  }
-  state.keyDownListeners['ArrowLeftShift'] = () => {
-    if (!state.player || !state.player.currentPlayingNode) return
-    state.player.setCurrentSeconds(0)
-  }
+  setSeekKeybind('ArrowRightAlt', () => state.player.getCurrentSeconds() + state.playerConfig.rewindStepSeconds)
+  setSeekKeybind('ArrowLeftAlt', () => state.player.getCurrentSeconds() - state.playerConfig.rewindStepSeconds)
+  setSeekKeybind('ArrowRightShift', () => state.player.getTotalSeconds() - state.playerConfig.rewindTailSeconds)
+  setSeekKeybind('ArrowLeftShift', () => 0)
 }
 
 function createSeekBar(row) {
@@ -811,6 +830,7 @@ function createSeekBar(row) {
     bar.id = 'seekbar'
     state.seekbar = bar
     bar.oninput = () => {
+      if (!state.player) return
       let t = bar.value * state.playerConfig.seekPrecision
       state.player.setCurrentSeconds(t)
     }
@@ -818,6 +838,11 @@ function createSeekBar(row) {
   makeElem(row, 'span', e => {
     state.progressNow = e
     e.id = 't-now'
+    // copy current time in seconds on click (useful for adding t:end)
+    e.onclick = () => {
+      if (!state.player) return
+      navigator.clipboard.writeText(state.player.getCurrentSeconds().toFixed(1))
+    }
   })
   makeElem(row, 'span', e => {
     state.progressFull = e
@@ -825,6 +850,7 @@ function createSeekBar(row) {
   })
   row.hidden = true
   state.progressRow = row
+  assignSeekKeybinds()
 }
 
 function durationToString(t) {
@@ -870,7 +896,7 @@ function createModeSelect(parent) {
       localStorage['playgen:mode'] = p
     })
     // pre-select playlist mode from url params
-    let urlPlaylistModeParam = params['pl']
+    let urlPlaylistModeParam = params.pl
     if (urlPlaylistModeParam) {
       try {
         selectPlaylist(urlPlaylistModeParam)
@@ -1008,7 +1034,12 @@ function createSeqCheckbox(parent) {
   createCheckbox(
     parent,
     !state.playerConfig.sequentially,
-    v => state.playerConfig.sequentially = !v,
+    v => {
+      state.playerConfig.sequentially = !v
+      if (!state.player || !state.queue.length) return
+      smashQueue(1)
+      enqNextIfNeeded(state.queue[state.queue.length - 1])
+    },
     'Shuffle',
     'Pick random tracks from playlist. When disabled, same order as in collection index will always be used'
   )
@@ -1034,7 +1065,10 @@ function createCheckbox(parent, initValue, setAndApply, name, title) {
 function createFileButton(parent) {
   makeElem(parent, 'button', button => {
     button.textContent = 'File'
-    button.title = 'Select your module tracking music files to play (or just drag and drop them)'
+    button.title = [
+      'Select your module tracking music files to play (or just drag and drop them)',
+      'Supported file formats: ' + playableExts.join(', ')
+    ].join('\n')
     button.onclick = () => {
       let input = makeElem(parent, 'input', input => {
         input.type = 'File'
@@ -1166,18 +1200,20 @@ function saveSession() {
   if (!state.player) return
   let q = state.queue[state.queueIndex]
   if (!q || !q.id || q.customMetadata) return
+  if (state.playerConfig.restoreOnRefreshOnlyIfPlaying && !isPlaying()) return
   localStorage['playgen:session'] = JSON.stringify({
     id: q.id,
     t: state.player.getCurrentSeconds(),
     speed: state.playerConfig.speed,
     volume: state.playerConfig.volume,
     autoplay: isPlaying(),
+    pl: state.sourceName,
     exp: Date.now() + state.playerConfig.restoreOnRefreshExpireMs
   })
 }
 
 function loadSession() {
-  if (!params['id'] && !params['t']) setSession(localStorage['playgen:session'])
+  if (!params.id && !params.t) setSession(localStorage['playgen:session'])
   delete localStorage['playgen:session']
 }
 
@@ -1186,6 +1222,7 @@ function setSession(s) {
   try {
     s = JSON.parse(s)
     if (s.exp && Date.now() > s.exp) return
+    if (params.pl && s.pl != params.pl) return
     params.id = [s.id]
     params.t = s.t
     params.speed = s.speed
@@ -1259,14 +1296,16 @@ function updateGraffitiAnim() {
 // --- coloring by category
 
 function category_to_rgb15(x0, x2, x3) {
-  let c = [2,4,5][Math.min((+x0||0), 2)]
-  let n = +x2||0 // 012345
+  let c0 = +x0 || 0
+  let c = 2 + 2 * Math.min(c0, 1)
+  let c3 = c * 3 + Math.max(c0, 1) - 1
+  let n = +x2 || 0 // 012345
   let n2 = Math.abs(3 - n) // 321012
-  let nm = n*(2+1*(x0!='n')) // n:02468a m:039cf
-  let mood = 1*(+x3||0)
-  let r = n == 0 ? 0 : Math.min(Math.max(11 - nm + c*3, 0), 15)
-  let g = Math.max(n2 * 2 + mood, Math.floor(c * (15 - n * 3) / 5))
-  let b = Math.min(Math.min(Math.max(nm-4, 0), 8) + 4*(x0=='m') + (4+2*c)*(x2=='m') + n*mood, 15)
+  let nm = n * (2 + (x0 != 'n')) // n:02468a m:039cf
+  let mood = +x3 || 0
+  let r = n == 0 && x0 != 'n' ? 0 : Math.min(Math.max(11 - nm + c3, 0), 15)
+  let g = Math.max(n2 * 2 + mood, Math.floor(c3 * (5 - n) / 5))
+  let b = Math.min(Math.min(Math.max(nm - 4, 0), 8) + 4 * (x0 == 'm') + (4 + 2 * c) * (x2 == 'm') + n * mood, 15)
   if (x3 == '0') {
     let avg = (r + b + g) / 3
     r = Math.floor((r*7+avg)/8)
@@ -1332,7 +1371,7 @@ async function createFakeAudioToMakeMediaSessionWork() {
   audioElem.loop = true
   // but at least we can pause it
   // however on chromium pause events will be ignored then
-  audioElem.onplay = () => setTimeout(() => audioElem.pause(), 500)
+  audioElem.onplay = () => setTimeout(() => audioElem.pause(), state.playerConfig.bubbleIntroMs)
   return audioElem.play()
 }
 

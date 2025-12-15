@@ -40,7 +40,7 @@ ChiptuneJsPlayer.prototype.setCurrentSeconds = function(t) {
   let start = this.currentPlayingNode.insn.start || 0
   let out = libopenmpt._openmpt_module_set_position_seconds(this.currentPlayingNode.modulePtr, Math.max(t, 0) + start)
   this.onTick()
-  console.debug(`Position set to ${out} seconds`)
+  console.debug(`Position set to ${out.toFixed(2)} seconds`)
   return out
 }
 
@@ -58,6 +58,10 @@ ChiptuneJsPlayer.prototype.getTotalPatterns = function() {
 }
 
 ChiptuneJsPlayer.prototype.setVolumeGainMillibells = function(volume) {
+  if (this.currentPlayingNode.insn && this.currentPlayingNode.insn.gainMillibells) {
+    volume += this.currentPlayingNode.insn.gainMillibells
+    console.debug('Using amplified volume:', volume)
+  }
   return libopenmpt._openmpt_module_set_render_param(this.currentPlayingNode.modulePtr, 1, volume)
 }
 
@@ -124,8 +128,10 @@ ChiptuneJsPlayer.prototype.play = function(buffer, insn = {}) {
   this.currentPlayingNode = this.createLibopenmptNode(buffer, this.config, insn)
   this.setRepeatCount(this.config.repeatCount || +insn['repeat'] || 0)
   this.setVolumeGainMillibells(this.config.volume)
-  if (insn.t) this.setCurrentSeconds(insn.t)
-  else if (insn.start) this.setCurrentSeconds(0)
+  if (insn.t) {
+    this.setCurrentSeconds(insn.t)
+    delete insn.t
+  } else if (insn.start) this.setCurrentSeconds(0)
   this.currentPlayingNode.reconnect()
 }
 
@@ -332,9 +338,6 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
             c.strokeStyle = l.color
             c.stroke()
           }
-        }
-        if (config.spectrumHook) {
-          setTimeout(() => config.spectrumHook(rawAudioLeft, rawAudioRight, this.context.sampleRate), 0)
         }
       }
       if (actualFramesPerChunk < framesPerChunk) {
