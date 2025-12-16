@@ -43,27 +43,27 @@
     class="side-logo" onmousedown="this.r=(this.r||0)+1;this.style.transform='rotate('+this.r+'turn)';event.preventDefault()">
     <div id="about" class="overlay-pad">
       <p>
-        Playgen (pl4yg3n) is keygen music radio-like player.
+        Playgen (pl4yg3n) is keygen music radio-like player (or a music streaming app, if you prefer).
         Free and <a href="https://github.com/pl4yg3n" target="_blank">Open Source</a>!
-        Its playlist consists of <span id="base-count">over 4K</span>
-        <a href="https://en.wikipedia.org/wiki/Module_file" target="_blank">tracker music files</a>,
+        There are currently <span id="base-count">over 4K</span> musical tracks,
         mostly in <a href="https://en.wikipedia.org/wiki/Chiptune" target="_blank">chiptune</a> style,
         dynamically loaded and played within the browser.
+        All music here is in a <a href="https://en.wikipedia.org/wiki/Module_file" target="_blank">pretty unusual format</a>
+        (not even close to mp3!), basically just notes + instrument samples.
       </p>
       <p>
         No ads, no fees, no sign-up, no paywalls, no tracking scripts. Just free music to listen!
       </p>
       <p>
         Playlists are generated from marked & tagged index of files,
-        and that's where the name from (playlist generator), but also from play + keygen.
-        Major part of playlist is based on
+        and that's where the name from ("playlist generator").
+        But "playgen" also comes from "play" + "keygen", as major part of playlist is based on
         <a href="https://archive.org/details/keygen-music-2020-03-pack" target="_blank">collection of music</a>
         once <a href="https://en.wikipedia.org/wiki/Crack_intro" target="_blank">found</a>
         in actual <a href="https://en.wikipedia.org/wiki/Keygen" target="_blank">keygen-like</a> programs.
-        Now, most music can be found on <a href="https://modarchive.org/" target="_blank">ModArchive</a>
+        Most music can be as well found on <a href="https://modarchive.org/" target="_blank">ModArchive</a>
         (playlist also includes a lot of additional cool tracks from there,
         like <a href="https://modarchive.org/index.php?request=view_by_moduleid&query=60693" target="_blank">Starshine by Purple Motion</a>).
-        Here's a mode to play random music directly from full ModArchive collection (over 170K tracks!).
       </p>
       <p>
         Share this website with your friends if you like it!
@@ -76,10 +76,14 @@
       <h3>Features</h3>
       <ul>
         <li>
-          In "Music info", you can copy link to current track, also you can see internal texts extracted from music file there
+          Select mode/playlist ("auto" mode picks it depending on current time).
+          There's also an additional option to play random music directly from full ModArchive collection (over 170K tracks!)
         </li>
         <li>
-          Press "···" to show additional controls: volume, playback speed, loop and more options!
+          In "Music info", you can view internal texts (extracted directly from music file), and copy link to current track in one click
+        </li>
+        <li>
+          Press "···" to access additional controls: volume, playback speed, loop and more options!
         </li>
         <li>
           You can even play your files, just drag and drop them, or select using "File" button (supported formats: <span id="supported-exts">xm, mod, s3m, it</span>)
@@ -97,7 +101,7 @@
               (use <kbd data="ArrowLeftShift">Shift ←</kbd> / <kbd data="ArrowRightShift">Shift →</kbd> to jump to beginning/end)
             </li>
             <li>
-              Speed up the music or slow it down! <kbd data="ArrowUpAlt">Alt ↑</kbd> / <kbd data="ArrowDownAlt">Alt ↓</kbd>
+              Speed up the music or <span onclick="this.textContent = '🐌 snail'">slow</span> it down! <kbd data="ArrowUpAlt">Alt ↑</kbd> / <kbd data="ArrowDownAlt">Alt ↓</kbd>
               (<kbd data="SlashAlt">Alt /</kbd> to reset)
             </li>
             <li>
