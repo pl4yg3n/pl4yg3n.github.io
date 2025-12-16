@@ -10,6 +10,10 @@ const modes = [
   {name: '📀 Auto', p: '@auto', title: 'Automatically selects playlist depending on time of the day'},
   {name: '🎲 All', p: 'accepted', title: 'Random music from full playable collection'},
 
+  {name: '👍 Good', p: 'day_good', title: 'Collection of pretty good tracks, usually played from 14:00 to 17:00'},
+  {name: '🏅 Gold', p: 'day_gold', title: 'Golden collection, usually played from 15:00 to 16:00'},
+  {name: '👑 Best', p: 'day_best', title: 'Collection of best masterpieces'},
+
   {name: '🏙️ Day', p: 'day', title: 'Active musical tracks usually played during day'},
   {name: '🌇 Evening', p: 'night_1', title: 'Musical tracks usually played around 21:00'},
   {name: '🌆 Twilight', p: 'night_2', title: 'Partially calm tracks usually played around 22:30'},
@@ -27,10 +31,6 @@ const modes = [
   {name: '🎃 Pumpkin', p: 'group_pumpkin', title: 'Some mildly witchy & spooky tracks'},
   {name: '🍰 Happy', p: 'mood_gold', title: 'Happy music to cheer up ^^'},
   {name: '🌧️ Sorrow', p: ':sorrow', title: 'Sad tracks to comfort you'},
-
-  {name: '👍 Good', p: 'day_good', title: 'Collection of pretty good tracks, usually played from 14:00 to 17:00'},
-  {name: '🏅 Gold', p: 'day_gold', title: 'Golden collection, usually played from 15:00 to 16:00'},
-  {name: '👑 Best', p: 'day_best', title: 'Collection of best masterpieces'},
 
   {name: '🏛️ ModArchive', p: '!ma:random', title: 'Random music from modarchive.org - a huge external collection of over 170K tracks!'},
   
