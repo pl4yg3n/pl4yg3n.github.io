@@ -1298,14 +1298,25 @@ function updateGraffitiAnim() {
 function category_to_rgb15(x0, x2, x3) {
   let c0 = +x0 || 0
   let c = 2 + 2 * Math.min(c0, 1)
-  let c3 = c * 3 + Math.max(c0, 1) - 1
+  let c3 = c * 3 + Math.max(c0, 1) - 2
   let n = +x2 || 0 // 012345
   let n2 = Math.abs(3 - n) // 321012
   let nm = n * (2 + (x0 != 'n')) // n:02468a m:039cf
   let mood = +x3 || 0
-  let r = n == 0 && x0 != 'n' ? 0 : Math.min(Math.max(11 - nm + c3, 0), 15)
+  let r = n == 0 && x0 != 'n' ? 2 * mood + 5 * (x3 == 'a') : Math.min(Math.max(11 - nm + c3, 0), 15)
   let g = Math.max(n2 * 2 + mood, Math.floor(c3 * (5 - n) / 5))
   let b = Math.min(Math.min(Math.max(nm - 4, 0), 8) + 4 * (x0 == 'm') + (4 + 2 * c) * (x2 == 'm') + n * mood, 15)
+  if (mood >= 1) {
+    let d = Math.max(Math.min(mood*3, 6 - b, r - 6), 0)
+    r -= d
+    g += d / 2
+    let avg = (r + b + g) / 3
+    let t1 = mood + 4
+    let t0 = mood * (avg - 1)
+    r = Math.min(Math.max(Math.floor((r * t1 - t0) / 4), 0), 15)
+    g = Math.min(Math.max(Math.floor((g * t1 - t0) / 4), 0), 15)
+    b = Math.min(Math.max(Math.floor((b * t1 - t0) / 4), 0), 15)
+  } else
   if (x3 == '0') {
     let avg = (r + b + g) / 3
     r = Math.floor((r*7+avg)/8)
