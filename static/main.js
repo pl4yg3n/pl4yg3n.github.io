@@ -176,7 +176,7 @@ const state = {
   queueIndex: -1,
   source: null,
   anim: {
-    enabled: false,
+    enabled: !!params.anim,
     state: false,
     timer: null,
   },
@@ -374,9 +374,12 @@ async function playQueue() {
   if (!q) {
     throw 'Queue is empty at current index!'
   }
+  setGraffitiStatus('loading')
   if (!q.prepared) {
     if (!q.solid) q.solid = 1
-    q.prepared = q.loaded.then(q => playQueueItem(q, currentIndex))
+    q.prepared = q.loaded
+      .then(q => playQueueItem(q, currentIndex))
+      .then(q => {setGraffitiStatus(q.customMetadata ? 'error' : 'ok'); return q}, err => {setGraffitiStatus('error'); throw err})
   }
   return q.prepared
 }
@@ -667,12 +670,17 @@ function selectSourceByName(name) {
 // --- finishing init (todo: refactor this all)
 
 function ready() {
-  // graffiti: set to ready
-  Array.from(graffiti.children).forEach((e, i) => e.textContent = graffitiTextDone[i])
+  // graffiti: set to ready if not yet
+  if (!state.player) setGraffitiStatus('ok')
   // graffiti: add actions on click
   graffiti.addEventListener('click', () => {
-    if (!state.player) {
-      playNext()
+    if (!isPlaying()) {
+      if (!state.player) {
+        playNext()
+        return
+      }
+      state.player.togglePause()
+      state.resetPause()
       return
     }
     state.anim.enabled = !state.anim.enabled
@@ -1202,10 +1210,11 @@ function saveSession() {
   if (!q || !q.id || q.customMetadata) return
   if (state.playerConfig.restoreOnRefreshOnlyIfPlaying && !isPlaying()) return
   localStorage['playgen:session'] = JSON.stringify({
-    id: q.id,
+    id: [q.id],
     t: state.player.getCurrentSeconds(),
     speed: state.playerConfig.speed,
     volume: state.playerConfig.volume,
+    anim: state.anim.enabled,
     autoplay: isPlaying(),
     pl: state.sourceName,
     exp: Date.now() + state.playerConfig.restoreOnRefreshExpireMs
@@ -1223,11 +1232,8 @@ function setSession(s) {
     s = JSON.parse(s)
     if (s.exp && Date.now() > s.exp) return
     if (params.pl && s.pl != params.pl) return
-    params.id = [s.id]
-    params.t = s.t
-    params.speed = s.speed
-    params.volume = s.volume
-    params.autoplay = s.autoplay
+    delete s.exp
+    Object.assign(params, s)
   } catch(err) {
     console.error('Invalid session JSON:', err)
   }
@@ -1249,31 +1255,40 @@ function setAmbientColor(ambientColor) {
   withElem('ambient', style => style.textContent = 'html{--ambient:'+ambientColor+';}')
 }
 
-// --- animations
+// --- graffiti animations
 
 function setAnimPeriod(period) {
   withElem('period', style => style.textContent = '.leaf{--period:'+period+'s;}')
 }
 
-const graffitiTextLoad = 'Loading'
-const graffitiTextDone = 'Playgen'
-const graffitiTextFail = '[error]'
+const graffitiText = {
+  loading: 'Loading',
+  ok: 'Playgen',
+  error: '[error]',
+}
 function createGraffiti() {
-  makeElem(document.body, 'pre', graffiti => {
-    graffitiTextLoad.split('').forEach((c, i) => {
+  state.graffiti = makeElem(document.body, 'pre', graffiti => {
+    for (let i = 0; i < graffitiText.ok.length; i++) {
       makeElem(graffiti, 'span', e => {
         e.className = 'leaf'
-        e.textContent = c
         e.style.animationDelay = -i / 8 + 's'
       })
-    })
+    }
     graffiti.id = 'graffiti'
   })
+  setGraffitiStatus('loading')
 }
+
+function setGraffitiStatus(status) {
+  let text = graffitiText[status]
+  Array.from(state.graffiti.children).forEach((e, i) => e.textContent = text[i])
+  state.graffiti.classList[['add', 'remove'][+(status != 'loading')]]('loading')
+}
+
 function updateGraffitiAnim() {
   let enabled = state.anim.enabled && isPlaying()
   if (enabled != state.anim.state) {
-    withElem('graffiti', e => e.classList[['add', 'remove'][+state.anim.state]]('waving'))
+    state.graffiti.classList[['add', 'remove'][+state.anim.state]]('waving')
     state.anim.state = enabled
   }
   if (enabled) {

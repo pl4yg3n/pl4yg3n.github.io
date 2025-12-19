@@ -32,6 +32,7 @@ body {
   margin-top: 0.5em;
   display: inline-block;
   color: var(--foreground);
+  cursor: pointer;
 }
 
 /* inputs */
@@ -204,8 +205,12 @@ button.true::before {
 .leaf {
   display: inline-block;
 }
-.waving > .leaf {
+#graffiti.waving > .leaf {
   animation: sqew var(--period) infinite ease-in-out;
+  transform-origin: 50% 60%;
+}
+#graffiti.loading > .leaf {
+  animation: sqiz 0.6s infinite ease-in-out;
   transform-origin: 50% 60%;
 }
 
