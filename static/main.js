@@ -1401,7 +1401,17 @@ async function createFakeAudioToMakeMediaSessionWork() {
   return audioElem.play()
 }
 
+function linkMail() {
+  withElem('about-container', c => withElem('mail', raw =>
+      c.addEventListener('toggle', () => {
+      let link = raw.textContent.replace(/\(at\)/,'@').replace(/\(dot\)/,'.')
+      raw.replaceWith(makeElem(null, 'a', a => a.href = 'mailto:' + (a.textContent = link)))
+    })
+  ))
+}
+
 // --- run startup
 
 createGraffiti()
 loadIndex()
+linkMail()
