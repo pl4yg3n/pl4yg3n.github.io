@@ -1216,7 +1216,7 @@ function saveSession() {
     volume: state.playerConfig.volume,
     anim: state.anim.enabled,
     autoplay: isPlaying(),
-    pl: state.sourceName,
+    pl: state.sourceName == params.pl ? params.pl : null,
     exp: Date.now() + state.playerConfig.restoreOnRefreshExpireMs
   })
 }
