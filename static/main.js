@@ -164,6 +164,7 @@ const state = {
 
     bubbleIntroMs: 750,
     tickFactor: 1 / 3,
+    maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
     useGraph: !!params.graph,
     graphParams: {
       w: 2048,
@@ -171,10 +172,10 @@ const state = {
       lineWidth: 1.5,
     }
   },
-  player: null,
-  queue: [],
-  queueIndex: -1,
-  playIndex: -1,
+  player: null, // wasm backend to play buffer
+  queue: [], // playing sequence (history + current + enqueued)
+  queueIndex: -1, // queue position of currently played item
+  playIndex: -1, // sequential id to prevent possible problems in case of concurrent loading
   source: null,
   anim: {
     enabled: !!params.anim,
@@ -415,25 +416,40 @@ function playQueueItem(q, playIndex) {
   }
   // todo: unload buffer after another play
   //if (!q.persist) q.buffer = null
+  trimQueueHistory()
   state.resetPause()
   enqNextIfNeeded(q)
   return q
 }
 
 function unlistQueueItem(q) {
-  let removedIndex = state.queue.indexOf(q)
-  if (removedIndex == -1) {
-    console.debug('Cannot remove non-existent item from queue:', q)
-    return false
+  return dropQueueChunk(state.queue.indexOf(q))
+}
+
+function trimQueueHistory() {
+  let removeTo = state.queueIndex - state.playerConfig.maxQueueHistorySize
+  if (removeTo <= 0) return false
+  return dropQueueChunk(0, removeTo)
+}
+
+function dropQueueChunk(removedIndex, count=1) {
+  if (count <= 0 || (removedIndex + count) <= 0) return false
+
+  let removed = state.queue.splice(removedIndex, count)
+  console.debug(`Removed ${removed.length} items at index ${removedIndex} from queue:`, removed)
+
+  state.queue.slice(removedIndex).forEach(q => q.queueIndex -= count)
+  if (state.queueIndex >= removedIndex) {
+    if (state.queueIndex < removedIndex + count) {
+      // currently playing item is inside deleted chunk
+      // todo: specify what to do in this situation
+      state.resetPause()
+      state.queueIndex = removedIndex - 1
+    } else {
+      // currently playing item is ahead of deleted chunk
+      state.queueIndex -= count
+    }
   }
-  let removed = state.queue.splice(removedIndex, 1)
-  console.debug('Removed from queue:', removed[0], 'at index', removedIndex)
-  state.queue.slice(removedIndex).forEach(q => q.queueIndex--)
-  if (state.queueIndex == removedIndex) {
-    state.resetPause()
-    //playNext()
-  }
-  if (state.queueIndex >= removedIndex) state.queueIndex--
 }
 
 // --- metadata output
