@@ -174,6 +174,7 @@ const state = {
   player: null,
   queue: [],
   queueIndex: -1,
+  playIndex: -1,
   source: null,
   anim: {
     enabled: !!params.anim,
@@ -369,29 +370,37 @@ async function addToQueue(q) {
 }
 
 async function playQueue() {
-  let currentIndex = state.queueIndex
-  let q = state.queue[currentIndex]
+  let q = state.queue[state.queueIndex]
   if (!q) {
     throw 'Queue is empty at current index!'
   }
-  setGraffitiStatus('loading')
   if (!q.prepared) {
+    setGraffitiStatus('loading')
     if (!q.solid) q.solid = 1
+    let playIndex = ++state.playIndex
     q.prepared = q.loaded
-      .then(q => playQueueItem(q, currentIndex))
-      .then(q => {setGraffitiStatus(q.customMetadata ? 'error' : 'ok'); return q}, err => {setGraffitiStatus('error'); throw err})
+      .then(q => playQueueItem(q, playIndex))
+      .then(q => {
+        if (playIndex == state.playIndex) setGraffitiStatus(q.customMetadata ? 'error' : 'ok')
+        return q
+      }, err => {
+        if (playIndex == state.playIndex) setGraffitiStatus('error')
+        q.prepared = null
+        throw err
+      })
   }
   return q.prepared
 }
 
-function playQueueItem(q, currentIndex) {
+function playQueueItem(q, playIndex) {
   q.prepared = null
   if (!q || !q.buffer) {
     if (q) unlistQueueItem(q)
     throw 'Cannot play what is not loaded!'
   }
-  if (q.queueIndex != currentIndex) {
-    throw 'Queue item tried to play out of order (probably was skipped during loading)!'
+  if (playIndex != state.playIndex) {
+    console.warn('Queue item tried to play too late (probably was skipped during loading)!')
+    return q
   }
   q.played = true
   setPlayingStyle(q)
@@ -412,18 +421,19 @@ function playQueueItem(q, currentIndex) {
 }
 
 function unlistQueueItem(q) {
-  let queueIndex = state.queue.indexOf(q)
-  if (queueIndex != -1) {
-    let removed = state.queue.splice(queueIndex, 1)
-    console.debug('Removed from queue:', removed[0], 'at index', queueIndex)
-    if (state.queueIndex == queueIndex) {
-      state.resetPause()
-      //playNext()
-    }
-    if (state.queueIndex >= queueIndex) state.queueIndex--
-  } else {
-    console.debug('Failed to remove from queue:', q)
+  let removedIndex = state.queue.indexOf(q)
+  if (removedIndex == -1) {
+    console.debug('Cannot remove non-existent item from queue:', q)
+    return false
   }
+  let removed = state.queue.splice(removedIndex, 1)
+  console.debug('Removed from queue:', removed[0], 'at index', removedIndex)
+  state.queue.slice(removedIndex).forEach(q => q.queueIndex--)
+  if (state.queueIndex == removedIndex) {
+    state.resetPause()
+    //playNext()
+  }
+  if (state.queueIndex >= removedIndex) state.queueIndex--
 }
 
 // --- metadata output
