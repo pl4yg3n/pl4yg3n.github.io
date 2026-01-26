@@ -129,7 +129,7 @@ const urlConfig = {
   musicPathLocal: 'data/',
   musicUrlModArchive: 'https://api.modarchive.org/downloads.php?moduleid=',
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
-  modArchiveMaxId: 212315,
+  modArchiveMaxId: 212748,
 }
 const state = {
   playerConfig: {
@@ -244,7 +244,7 @@ async function enqNext(hint) {
   if (typeof state.source == 'string') {
     if (state.source == 'ma:random') {
       return enqMa(0, 0).catch(err => {
-        if (err == 'Invalid response') {
+        if (typeof err == 'string' && err.startsWith('Invalid response')) {
           enqNextIfNeeded()
         } else {
           throw err
