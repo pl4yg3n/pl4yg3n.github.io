@@ -125,7 +125,7 @@ const playlistAlias = {
 
 // --- player config
 
-const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'mptm'] // openmpt can play only those
+const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'mptm', 'mt2'] // openmpt can play only those
 // Well, actually...
 // Formats supported by https://lib.openmpt.org/libopenmpt/2025/05/31/release-0.8.0/:
 // mptm, mod, s3m, xm, it, 667, 669, amf, ams, c67, cba, dbm, digi, dmf, dsm, dsym, dtm,
