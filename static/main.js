@@ -8,7 +8,8 @@ initSession()
 
 const modes = [
   {name: '📀 Auto', p: '@auto', title: 'Automatically selects playlist depending on time of the day'},
-  {name: '🎲 All', p: 'accepted', title: 'Random music from full playable collection'},
+  {name: '🎲 All', p: 'accepted', title: 'Random music from full hand-picked collection'},
+  {name: '🃏 Whatever', p: 'playable', title: 'Random music from anything playable in collection', hidden: true},
 
   {name: '👍 Good', p: 'day_good', title: 'Collection of pretty good tracks, usually played from 14:00 to 17:00'},
   {name: '🏅 Gold', p: 'day_gold', title: 'Golden collection, usually played from 15:00 to 16:00'},
@@ -29,12 +30,23 @@ const modes = [
   {name: '🎸 Rock', p: ':rock'},
   {name: '📼 Remix', p: 'group_remix', title: 'Remixes & remakes'},
   {name: '🎃 Pumpkin', p: 'group_pumpkin', title: 'Some mildly witchy & spooky tracks'},
+  {name: '🎄 New Year', p: ':xmas', title: 'Festive holiday music', hidden: true},
   {name: '🍰 Happy', p: 'mood_gold', title: 'Happy music to cheer up ^^'},
   {name: '🌧️ Sorrow', p: ':sorrow', title: 'Sad tracks to comfort you'},
 
+  {name: '📻 KeygenFM', p: '*k:1', title: 'Music present in KeygenFM playlists', hidden: true},
+  {name: '🎩 c512w', p: ':c512w', title: 'Music by c512w', hidden: true},
+  {name: '🧪 LHS', p: ':agg|:aggrld|:rld', title: 'Music by LHS (and in LHS style)', hidden: true},
+  {name: '🌠 MrGamer', p: ':mrg', title: 'Music by MrGamer', hidden: true},
+  {name: '🎷 JosSs', p: '*:josss', title: 'Music by JosSs', hidden: true},
+
+  {name: '👄 Voice', p: '*:d:v', title: 'Tracks that contain any speech (mostly excluded from other playlists)', hidden: true},
+  {name: '🪣 Untested', p: 'unprocessed', title: 'Tracks that were not processed yet, but exist in collection', hidden: true},
+  {name: '🗑️ Unadded', p: 'unaccepted', title: 'Tracks (mostly low quality?) that were not accepted (yet), but exist in collection', hidden: true},
+
   {name: '🏛️ ModArchive', p: '!ma:random', title: 'Random music from modarchive.org - a huge external collection of over 170K tracks!'},
-  
-  {name: '🛠️ Custom', p: 'custom', title: 'Custom playlist', hidden: true}
+
+  {name: '🛠️ Custom', p: 'custom', title: 'Custom playlist', hidden: 2}
 ]
 const hourlyProgram = [
   /* 00: */ 'night_4',
@@ -108,8 +120,7 @@ const playlistAlias = {
   group_pumpkin: ':hut|:sour|:aggrld|:hlwn',
   group_remix: ':remake|:remix|:megamix',
   unprocessed: '*c:_',
-  different: '*c:d',
-  unaccepted: '*c:u',
+  unaccepted: '*c:udx;:!dup;:!d:v',
 }
 
 // --- player config
@@ -628,8 +639,8 @@ function plCode2Function(code) {
     let m = null
     m = expr.match(/^\.([\w]+)$/)
     if (m) return `e.ext == '${m[1]}'`
-    m = expr.match(/^:([\w:]+)$/)
-    if (m) return `e.tags['${m[1]}']`
+    m = expr.match(/^:(\!?)([\w:]+)$/)
+    if (m) return `${m[1]}e.tags['${m[2]}']`
     m = expr.match(/^:([\w:]+)\^(\d(\.\d)?|\.\d)$/)
     if (m) return `e.tags['${m[1]}'] >= ${m[2]}`
     m = expr.match(/^([ckqm]):([\w:]+)$/)
@@ -713,7 +724,7 @@ function ready() {
     updateGraffitiAnim()
   })
   // about: set dynamic values
-  withElem('base-count', e => e.textContent = playlists.accepted.length)
+  withElem('base-count', e => e.textContent = playlists.accepted.length + (params.more ? ` (${playlists.playable.length})` : ''))
   withElem('supported-exts', e => e.textContent = playableExts.join(', '))
   // params.id: enqueue referenced music
   if (params.id) params.id.forEach(enqById)
@@ -921,7 +932,7 @@ function createModeSelect(parent) {
       // prepend tiny space or else emoji's left side gets cut
       opt.textContent = '\u2005' + mode.name
       if (mode.title) opt.title = mode.title
-      if (mode.hidden) opt.hidden = true
+      if (mode.hidden && mode.hidden - !!(params.more)) opt.hidden = true
     })
     select.title = 'Select Mode/Playlist'
     select.addEventListener('change', () => {
