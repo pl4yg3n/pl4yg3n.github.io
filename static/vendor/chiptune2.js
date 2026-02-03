@@ -73,9 +73,10 @@ ChiptuneJsPlayer.prototype.getRepeatCount = function() {
   return libopenmpt._openmpt_module_get_repeat_count(this.currentPlayingNode.modulePtr)
 }
 
-ChiptuneJsPlayer.prototype.metadata = function() {
+ChiptuneJsPlayer.prototype.metadata = function(additionalKeys) {
   let data = {}
   let keys = ['title', 'message_raw', 'type']
+  if (additionalKeys && additionalKeys.length) keys = keys.concat(additionalKeys)
   // sometimes some texts won't show up in `message`,
   // that's why need to use `message_raw` and add all other manually
   for (let i = 0; i < keys.length; i++) {

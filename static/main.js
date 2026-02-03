@@ -125,7 +125,7 @@ const playlistAlias = {
 
 // --- player config
 
-const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'mptm', 'mt2'] // openmpt can play only those
+const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'mptm', 'mt2', 'stm'] // openmpt can play only those
 // Well, actually...
 // Formats supported by https://lib.openmpt.org/libopenmpt/2025/05/31/release-0.8.0/:
 // mptm, mod, s3m, xm, it, 667, 669, amf, ams, c67, cba, dbm, digi, dmf, dsm, dsym, dtm,
@@ -140,7 +140,7 @@ const urlConfig = {
   musicPathLocal: 'data/',
   musicUrlModArchive: 'https://api.modarchive.org/downloads.php?moduleid=',
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
-  modArchiveMaxId: 212748,
+  modArchiveMaxId: 212833,
 }
 const state = {
   playerConfig: {
@@ -335,7 +335,7 @@ async function enqEntry(e, solid=1, customMetadata) {
       gainMillibells: (e.tags['d:lvol'] || 0) * state.playerConfig.volumeAddForLowVolumeTracks,
     },
     id: e.md5.slice(0, 10),
-    idMa: +e.tags['id:ma'] || null,
+    idMa: +e.tags['id:ma'] || +e.tags['id:dup:ma'] || null,
     solid,
     customMetadata: customMetadata
   })
@@ -916,7 +916,7 @@ function resetProgress() {
   state.seekbar.value = 0
   state.progressRow.hidden = false
   state.progressNow.textContent = durationToString(0)
-  state.progressFull.textContent = durationToString(Math.ceil(duration))
+  state.progressFull.textContent = durationToString(Math.round(duration))
 }
 
 function updateProgress() {
