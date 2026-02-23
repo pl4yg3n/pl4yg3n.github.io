@@ -277,19 +277,23 @@ summary:hover {
 /* contents */
 
 #output-id {
+  display: block;
   opacity: 0.5;
 }
-.data-button {
-  margin: 0;
-  padding: 0 0.3em;
+.metadata-button {
+  margin: 0.25em;
   height: 1.2em;
-  width: 1em;
+  width: 1.2em;
   line-height: 1em;
   font-family: monospace;
   border-color: #555;
   opacity: 0.7;
 }
-.data-button:hover {
+.metadata-button:hover {
+  opacity: 1;
+}
+.metadata-button:active {
+  border-color: #0a0;
   opacity: 1;
 }
 #output-title {

@@ -357,6 +357,7 @@ function smashQueue(force) {
 }
 
 async function addToQueue(q) {
+  if (!q.buffer && !q.src) throw 'Failed to enqueue incomplete object!'
   let smashCurrent = smashQueue(q.solid)
   q.queueIndex = state.queue.push(q) - 1
   console.debug('Added to queue:', q)
@@ -469,20 +470,11 @@ function dropQueueChunk(removedIndex, count=1) {
 
 // --- metadata output
 
-function setupMetadataButton(id, data) {
-  withElem(id, button => {
-    button.hidden = !data
-    button._data = data
-    if (data) button.textContent = button.getAttribute('data-ready')
-  })
-}
-
 async function displayMetadata(q) {
   let data = q.customMetadata || state.player.metadata()
   withElem('metadata-container', e => e.hidden = false)
-  withElem('output-id', e => e.textContent = q.id ? 'id: ' + q.id : (q.src || ''))
-  setupMetadataButton('share-id', q.id)
-  setupMetadataButton('share-dl', q.src)
+  withElem('output-id', e => e.textContent = q.id ? 'id: ' + q.id : (q.fileName || ''))
+  state.setupMetadataButtons(q)
   let idMa = q.idMa
   withElem('output-id-ma', e => {
     e.textContent = idMa ? 'ModArchive id: ' + idMa : ''
@@ -496,30 +488,6 @@ async function displayMetadata(q) {
     resizer.hidden = !isMessageWide
     if (isMessageWide) resizer.onpointerdown = resizeInit
   })
-}
-
-function copyIdLink(shareButton) {
-  let id = shareButton._data
-  if (!id) return false
-  let url = location.origin + location.pathname + '?id=' + id
-  if (state.playerConfig.repeatCount == -1) url += '&repeat'
-  if (state.playerConfig.speed != 1) url += '&speed=' + state.playerConfig.speed
-  try {
-    navigator.clipboard.writeText(url)
-  } catch(err) {
-    shareButton.textContent = shareButton.getAttribute('data-fail')
-    return false
-  }
-  shareButton.textContent = shareButton.getAttribute('data-ok')
-}
-
-function download(shareButton) {
-  let url = shareButton._data
-  if (!url) return false
-  // just open it, assuming server provides file name & download hint,
-  // and browser will try to download unknown file type instead of displaying
-  let result = window.open(url)
-  shareButton.textContent = shareButton.getAttribute('data-' + (result ? 'ok' : 'fail'))
 }
 
 // --- resizing max width of metadata panel by dragging
@@ -571,7 +539,7 @@ function processDroppedFiles(files) {
       try {
         addToQueue({
           buffer: reader.result,
-          src: reader.fileName,
+          fileName: reader.fileName,
           color: '#99a',
           solid: 2,
           persist: true,
@@ -739,10 +707,6 @@ function ready() {
     state.anim.enabled = !state.anim.enabled
     updateGraffitiAnim()
   })
-  // music info: add keybind for download
-  state.keyDownListeners['KeySCtrl'] = () => {
-    withElem('share-dl', button => button.click())
-  }
   // about: set dynamic values
   withElem('base-count', e => e.textContent = playlists.accepted.length + (params.more ? ` (${playlists.playable.length})` : ''))
   withElem('supported-exts', e => e.textContent = playableExts.join(', '))
@@ -804,6 +768,7 @@ function createControls() {
     makeElem(controls, 'div', progressRow => createSeekBar(progressRow))
     createOptionalControls(controls)
   })
+  createMetadataControls()
 }
 
 function createPauseButton(parent) {
@@ -1209,16 +1174,78 @@ function createGraphButton(parent) {
     }
     if (canv) canv.hidden = !useGraph
   }
-  makeElem(parent, 'button', e => {
-    e.textContent = '📈'
-    e.title = 'Toggle wave graph output'
-    e.addEventListener('click', () => {
+  makeElem(parent, 'button', button => {
+    button.textContent = '📈'
+    button.title = 'Toggle wave graph output'
+    button.addEventListener('click', () => {
       let useGraph = !state.playerConfig.useGraph
       state.playerConfig.useGraph = useGraph
       resetGraph(useGraph)
     })
   })
   resetGraph(state.playerConfig.useGraph)
+}
+
+// --- metadata controls
+
+function createMetadataControls() {
+  withElem('metadata-controls', parent => {
+    let setupActions = [
+      makeMetadataButton(parent, '⎘', 'Copy id', q => q.id, q => copyToClipboard(q.id)),
+      makeMetadataButton(parent, '⌲', 'Copy link to this music', q => q.id, copyIdLink),
+      makeMetadataButton(parent, '🖫', 'Download current music module file [Ctrl+S]', q => q.src, download, 'KeySCtrl'),
+    ]
+    state.setupMetadataButtons = q => setupActions.forEach(setup => setup(q))
+  })
+}
+
+function makeMetadataButton(parent, icon, title, setupCheck, action, keybind) {
+  let qLocal = null
+  let button = makeElem(parent, 'button', button => {
+    button.title = title
+    button.className = 'metadata-button'
+    button.addEventListener('click', () => {
+      let success = qLocal ? action(qLocal) : false
+      button.textContent = ['✓', '✗'][+!success]
+    })
+    if (keybind) state.keyDownListeners[keybind] = () => {
+      button.click()
+    }
+  })
+
+  return q => {
+    let isAvailable = setupCheck(q)
+    button.hidden = !isAvailable
+    qLocal = isAvailable ? q : null
+    button.textContent = icon
+  }
+}
+
+function copyIdLink(q) {
+  let id = q.id
+  if (!id) return false
+  let url = location.origin + location.pathname + '?id=' + id
+  if (state.playerConfig.repeatCount == -1) url += '&repeat'
+  if (state.playerConfig.speed != 1) url += '&speed=' + state.playerConfig.speed
+  return copyToClipboard(url)
+}
+
+function copyToClipboard(text) {
+  if (!text) return false
+  try {
+    navigator.clipboard.writeText(text)
+  } catch(err) {
+    return false
+  }
+  return true
+}
+
+function download(q) {
+  let url = q.src
+  if (!url) return false
+  // just open it, assuming server provides file name & download hint,
+  // and browser will try to download unknown file type instead of displaying
+  return window.open(url)
 }
 
 // --- key handling
@@ -1304,7 +1331,7 @@ function initSession() {
 // --- ambient coloring
 
 function setPlayingStyle(q) {
-  console.info('Playing:', q.e ? q.e.line : q.src)
+  console.info('Playing:', q.e ? q.e.line : q.src || q.fileName)
   console.debug('Queue pos:', state.queue.indexOf(q) + 1, '/', state.queue.length)
   setAmbientColor(q.color ? q.color : '#aaa')
 }
