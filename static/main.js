@@ -20,6 +20,8 @@ const modes = [
   {name: '🌆 Twilight', p: 'night_2', title: 'Partially calm tracks usually played around 22:30'},
   {name: '🌉 Night', p: 'night_wide', title: 'Calm tracks usually played from 22:00 to 06:00'},
   {name: '🌃 Midnight', p: 'night_4', title: 'Calm tracks usually played from 00:00 to 05:00'},
+  {name: '🛌 Late', p: 'night_5', title: 'Quiet tracks usually played from 01:00 to 04:00', hidden: true},
+  {name: '🌅 Early', p: 'morning_1', title: 'Calm tracks usually played around 07:00', hidden: true},
   {name: '🌄 Morning', p: 'morning_2', title: 'Calm and active tracks usually played around 09:00'},
 
   {name: '🌌 Cosmical', p: ':cosm', title: 'Coolest spacious cosmical music for imagination (best themed playlist!)'},
@@ -38,7 +40,9 @@ const modes = [
   {name: '🎩 c512w', p: ':c512w', title: 'Music by c512w', hidden: true},
   {name: '🧪 LHS', p: ':agg|:aggrld|:rld', title: 'Music by LHS (and in LHS style)', hidden: true},
   {name: '🌠 MrGamer', p: ':mrg', title: 'Music by MrGamer', hidden: true},
+  {name: '🌁 PaleDeth', p: ':paledeth', title: 'Music by PaleDeth', hidden: true},
   {name: '🎷 JosSs', p: '*:josss', title: 'Music by JosSs', hidden: true},
+  {name: '👒 c512w fav', p: ':c512wfav', title: 'Music favorited by c512w on ModArchive', hidden: true},
 
   {name: '👄 Voice', p: '*:d:v', title: 'Tracks that contain any speech (mostly excluded from other playlists)', hidden: true},
   {name: '🪣 Untested', p: 'unprocessed', title: 'Tracks that were not processed yet, but exist in collection', hidden: true},
@@ -140,7 +144,7 @@ const urlConfig = {
   musicPathLocal: 'data/',
   musicUrlModArchive: 'https://api.modarchive.org/downloads.php?moduleid=',
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
-  modArchiveMaxId: 212833,
+  modArchiveMaxId: 212966,
 }
 const state = {
   playerConfig: {
@@ -465,17 +469,20 @@ function dropQueueChunk(removedIndex, count=1) {
 
 // --- metadata output
 
+function setupMetadataButton(id, data) {
+  withElem(id, button => {
+    button.hidden = !data
+    button._data = data
+    if (data) button.textContent = button.getAttribute('data-ready')
+  })
+}
+
 async function displayMetadata(q) {
   let data = q.customMetadata || state.player.metadata()
   withElem('metadata-container', e => e.hidden = false)
   withElem('output-id', e => e.textContent = q.id ? 'id: ' + q.id : (q.src || ''))
-  withElem('share-id', shareButton => {
-    shareButton.hidden = !q.id
-    if (q.id) {
-      shareButton._id = q.id
-      shareButton.textContent = shareButton.getAttribute('data-ready')
-    }
-  })
+  setupMetadataButton('share-id', q.id)
+  setupMetadataButton('share-dl', q.src)
   let idMa = q.idMa
   withElem('output-id-ma', e => {
     e.textContent = idMa ? 'ModArchive id: ' + idMa : ''
@@ -492,7 +499,7 @@ async function displayMetadata(q) {
 }
 
 function copyIdLink(shareButton) {
-  let id = shareButton._id
+  let id = shareButton._data
   if (!id) return false
   let url = location.origin + location.pathname + '?id=' + id
   if (state.playerConfig.repeatCount == -1) url += '&repeat'
@@ -504,6 +511,15 @@ function copyIdLink(shareButton) {
     return false
   }
   shareButton.textContent = shareButton.getAttribute('data-ok')
+}
+
+function download(shareButton) {
+  let url = shareButton._data
+  if (!url) return false
+  // just open it, assuming server provides file name & download hint,
+  // and browser will try to download unknown file type instead of displaying
+  let result = window.open(url)
+  shareButton.textContent = shareButton.getAttribute('data-' + (result ? 'ok' : 'fail'))
 }
 
 // --- resizing max width of metadata panel by dragging
@@ -723,6 +739,10 @@ function ready() {
     state.anim.enabled = !state.anim.enabled
     updateGraffitiAnim()
   })
+  // music info: add keybind for download
+  state.keyDownListeners['KeySCtrl'] = () => {
+    withElem('share-dl', button => button.click())
+  }
   // about: set dynamic values
   withElem('base-count', e => e.textContent = playlists.accepted.length + (params.more ? ` (${playlists.playable.length})` : ''))
   withElem('supported-exts', e => e.textContent = playableExts.join(', '))

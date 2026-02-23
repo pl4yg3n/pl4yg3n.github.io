@@ -279,16 +279,17 @@ summary:hover {
 #output-id {
   opacity: 0.5;
 }
-#share-id {
+.data-button {
   margin: 0;
   padding: 0 0.3em;
   height: 1.2em;
   width: 1em;
   line-height: 1em;
   font-family: monospace;
-  opacity: 0.5;
+  border-color: #555;
+  opacity: 0.7;
 }
-#share-id:hover {
+.data-button:hover {
   opacity: 1;
 }
 #output-title {

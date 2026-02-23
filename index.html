@@ -29,7 +29,8 @@
     <div id="metadata" class="overlay-pad">
       <div>
         <output id="output-id"></output>
-        <button id="share-id" data-ready="⌲" data-ok="✓" data-fail="✗" onclick="copyIdLink(this)" title="Copy link to this music"></button>
+        <button id="share-id" class="data-button" data-ready="⌲" data-ok="✓" data-fail="✗" onclick="copyIdLink(this)" title="Copy link to this music"></button>
+        <button id="share-dl" class="data-button" data-ready="🖫" data-ok="✓" data-fail="✗" onclick="download(this)" title="Download current music module file [Ctrl+S]"></button>
       </div>
       <a id="output-id-ma" target="mod-archive-tab" title="Open module's page on ModArchive.org"></a>
       <output id="output-title"></output>
@@ -45,7 +46,7 @@
       <p>
         Playgen (pl4yg3n) is keygen music radio-like player (or a music streaming web app, if you prefer).
         Free and <a href="https://github.com/pl4yg3n" target="_blank">Open Source</a>!
-        There are currently <span id="base-count">over 4K</span> musical tracks,
+        There are currently <span id="base-count">over 5K</span> musical tracks,
         mostly in <a href="https://en.wikipedia.org/wiki/Chiptune" target="_blank">chiptune</a> style,
         dynamically loaded and played within the browser.
         All music here is in a <a href="https://en.wikipedia.org/wiki/Module_file" target="_blank">pretty unusual format</a>
