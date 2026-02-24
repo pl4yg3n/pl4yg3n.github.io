@@ -8,6 +8,7 @@ initSession()
 
 const modes = [
   {name: '📀 Auto', p: '@auto', title: 'Automatically selects playlist depending on time of the day'},
+  {name: '⭐ Favorite', p: '!favorites', title: 'Your favorite tracks (this playlist is stored on your device)', hidden: 2},
   {name: '🎲 All', p: 'accepted', title: 'Random music from full hand-picked collection'},
   {name: '🃏 Whatever', p: 'playable', title: 'Random music from anything playable in collection', hidden: true},
 
@@ -198,6 +199,13 @@ const state = {
     timer: null,
   },
   keyDownListeners: {},
+  favorites: [],
+}
+try {
+  let favString = localStorage['playgen:favorites']
+  state.favorites = favString ? JSON.parse(favString) : []
+} catch (err) {
+  console.error(err)
 }
 
 // --- playing logic init
@@ -262,9 +270,12 @@ async function enqNext(hint) {
         if (typeof err == 'string' && err.startsWith('Invalid response')) {
           enqNextIfNeeded()
         } else {
-          throw err
+          enqOnError(err.toString())
         }
       })
+    }
+    if (state.source == 'favorites') {
+      return state.favorites.length ? enqById(pick(state.favorites), 0) : enqOnError('No favorites left!')
     }
     return enqOnError('invalid source')
   }
@@ -1194,9 +1205,11 @@ function createMetadataControls() {
       makeMetadataButton(parent, '⎘', 'Copy id', q => q.id, q => copyToClipboard(q.id)),
       makeMetadataButton(parent, '⌲', 'Copy link to this music', q => q.id, copyIdLink),
       makeMetadataButton(parent, '🖫', 'Download current music module file [Ctrl+S]', q => q.src, download, 'KeySCtrl'),
+      makeFavoriteButton(parent),
     ]
     state.setupMetadataButtons = q => setupActions.forEach(setup => setup(q))
   })
+  withElem('metadata-container', e => state.keyDownListeners['Backspace'] = () => e.firstElementChild.click())
 }
 
 function makeMetadataButton(parent, icon, title, setupCheck, action, keybind) {
@@ -1246,6 +1259,63 @@ function download(q) {
   // just open it, assuming server provides file name & download hint,
   // and browser will try to download unknown file type instead of displaying
   return window.open(url)
+}
+
+// --- favorite handling
+
+function makeFavoriteButton(parent) {
+  let qLocal = null
+  let isFav = null
+  let hints = '\nYou will find "Favorite" playlist near "Auto" mode.\nFavorites are stored on your device locally.'
+  let button = makeElem(parent, 'button', button => {
+    button.addEventListener('click', () => {
+      if (!qLocal) return
+      isFav = !isFav
+      updateFavorite(qLocal.id, isFav)
+      reset()
+    })
+    state.keyDownListeners['Backquote'] = () => {
+      button.click()
+    }
+  })
+
+  function reset() {
+    button.className = 'metadata-button fav-' + isFav
+    button.title = ['Add to', 'Remove from'][+!!isFav] + ' favorites [`].' + hints
+  }
+  setFavoritePlaylistHidden(!state.favorites.length)
+
+  return q => {
+    let isAvailable = q.id
+    button.hidden = !isAvailable
+    qLocal = isAvailable ? q : null
+    if (!isAvailable) return
+    isFav = state.favorites.includes(q.id)
+    reset()
+  }
+}
+
+function updateFavorite(id, shouldBeFav) {
+  if (shouldBeFav) {
+    if (state.favorites.length == 0) {
+      setFavoritePlaylistHidden(false)
+    }
+    state.favorites.push(id)
+  } else {
+    let i = state.favorites.indexOf(id)
+    if (i == -1) return
+    state.favorites.splice(i)
+    if (state.favorites.length == 0) {
+      setFavoritePlaylistHidden(true)
+    }
+  }
+  localStorage['playgen:favorites'] = JSON.stringify(state.favorites)
+}
+
+function setFavoritePlaylistHidden(hidden) {
+  let option = document.querySelector('option[value="!favorites"]')
+  if (!option) return
+  option.hidden = hidden
 }
 
 // --- key handling

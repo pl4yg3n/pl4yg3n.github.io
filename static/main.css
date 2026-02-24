@@ -177,6 +177,17 @@ button.true::before {
   filter: brightness(0.7) contrast(2.5) brightness(1.2);
 }
 
+button.fav-false::before {
+  content: '\2b50';
+  filter: grayscale(1) brightness(0.7);
+}
+button.fav-true::before {
+  content: '\1f31f';
+}
+#metadata-container:not([open]):has(.fav-true) > summary:after {
+  content: ' \2b50'
+}
+
 /* animations */
 
 @keyframes sqew {
