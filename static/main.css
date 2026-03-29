@@ -352,3 +352,53 @@ sub {
   font-size: 0.9em;
   margin-top: 3em;
 }
+
+/* mobile tweaks */
+
+@media (20rem <= width <= 35rem) {
+body {
+  font-size: 24px;
+}
+}
+@media (width <= 35rem) {
+.controls {
+  font-size: 4.1vw;
+}
+input[type="range"], button, select {
+  border-width: 0.2em;
+}
+.controls > button, .controls > select, #metadata button {
+  font-size: 6vw;
+  border-width: 0.15em;
+}
+.controls > button {
+  width: 2.55em;
+}
+.controls > select {
+  width: 68vw;
+}
+#progress-row {
+  max-width: 84vw;
+}
+#more-options, #t-now, #t-end {
+  padding: 0.5em 1.2em;
+  font-size: 4.1vw;
+}
+input[type="range"] {
+  height: 0.7em;
+  border-radius: 0.25em;
+}
+.range-row {
+  max-width: 95vw;
+}
+#graffiti {
+  margin: 0.8em auto 0.4em;
+  font-size: 12vw;
+}
+summary {
+  padding-bottom: 0.75em;
+}
+.overlay[open] {
+  background-color: rgba(0, 0, 0, 0.85);
+}
+}
