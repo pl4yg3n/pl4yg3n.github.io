@@ -145,7 +145,7 @@ const urlConfig = {
   musicPathLocal: 'data/',
   musicUrlModArchive: 'https://api.modarchive.org/downloads.php?moduleid=',
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
-  modArchiveMaxId: 212966,
+  modArchiveMaxId: 213304,
 }
 const state = {
   playerConfig: {
@@ -192,12 +192,13 @@ const state = {
   queue: [], // playing sequence (history + current + enqueued)
   queueIndex: -1, // queue position of currently played item
   playIndex: -1, // sequential id to prevent possible problems in case of concurrent loading
-  source: null,
-  anim: {
+  source: null, // playlist/function to take next tracks from
+  anim: { // graffiti animation
     enabled: !!params.anim,
     state: false,
     timer: null,
   },
+  hourlyRefresh: null, // hourly program update timer
   keyDownListeners: {},
   favorites: [],
 }
@@ -275,7 +276,7 @@ async function enqNext(hint) {
       })
     }
     if (state.source == 'favorites') {
-      return state.favorites.length ? enqById(pick(state.favorites), 0) : enqOnError('No favorites left!')
+      return state.favorites.length ? enqById(pick(state.favorites, hint), 0) : enqOnError('No favorites left!')
     }
     return enqOnError('invalid source')
   }
@@ -629,22 +630,48 @@ function generatePlaylists(index) {
   // all other playlists are generated lazily
 }
 
+// plCode characters for expression combining:
+// | - or
+// ; - and (high priority)
+// ! - not
+// disallowed due to url: &#%
+const plCodeExpressions = [
+  { // `.fc14` - match by file extension
+    r: /^\.([\w]+)$/,
+    f: m => `e.ext == '${m[1]}'`
+  },
+  { // `:cosm` - match by tag presence
+    r: /^:([\w:]+)$/,
+    f: m => `e.tags['${m[1]}']`
+  },
+  { // `:cosm^.8` - match by tag value (greater or equal)
+    r: /^:([\w:]+)\^(\d(\.\d)?|\.\d)$/,
+    f: m => `e.tags['${m[1]}'] >= ${m[2]}`
+  },
+  { // `c:3` - match by category component set of values
+    r: /^([ckqm]):([\w:]+)$/,
+    f: m => `'${m[2]}'.includes(e.${m[1]})`
+  },
+]
+
 function plCode2Function(code) {
   return new Function('e', 'return ' + code.split('|').map(x => x.split(';').map(expr => {
-    let m = null
-    m = expr.match(/^\.([\w]+)$/)
-    if (m) return `e.ext == '${m[1]}'`
-    m = expr.match(/^:(\!?)([\w:]+)$/)
-    if (m) return `${m[1]}e.tags['${m[2]}']`
-    m = expr.match(/^:([\w:]+)\^(\d(\.\d)?|\.\d)$/)
-    if (m) return `e.tags['${m[1]}'] >= ${m[2]}`
-    m = expr.match(/^([ckqm]):([\w:]+)$/)
-    if (m) return `'${m[2]}'.includes(e.${m[1]})`
+    let negate = false
+    if (expr.startsWith('!')) {
+      negate = true
+      expr = expr.slice(1)
+    }
+    for (let exprType of plCodeExpressions) {
+      let m = expr.match(exprType.r)
+      if (!m) continue
+      let js = '(' + exprType.f(m) + ')'
+      if (negate) js = '!' + js
+      return js
+    }
     throw `Could not recognize playlist expression '${expr}'`
-  }).map(x => '(' + x + ')').join(' && ')).join(' || '))
+  }).join(' && ')).join(' || '))
 }
 
-state.hourlyRefresh = null
 function selectPlaylist(name) {
   selectSourceByName(name)
   smashQueue(1)
@@ -1266,7 +1293,7 @@ function download(q) {
 function makeFavoriteButton(parent) {
   let qLocal = null
   let isFav = null
-  let hints = '\nYou will find "Favorite" playlist near "Auto" mode.\nFavorites are stored on your device locally.'
+  let hints = '\nYou will find "Favorite" playlist near "Auto" mode.\nFavorite list is stored on your device locally.'
   let button = makeElem(parent, 'button', button => {
     button.addEventListener('click', () => {
       if (!qLocal) return
