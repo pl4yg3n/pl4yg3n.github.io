@@ -323,6 +323,12 @@ a {
 a:visited {
   color: #99f;
 }
+a:hover {
+  color: #7cf;
+}
+a:visited:hover {
+  color: #caf;
+}
 kbd {
   border: 0.1em solid rgba(0, 0, 0, 0.4);
   border-radius: 0.3em;
@@ -400,5 +406,8 @@ summary {
 }
 .overlay[open] {
   background-color: rgba(0, 0, 0, 0.85);
+}
+#metadata-container summary {
+  text-align: left;
 }
 }
