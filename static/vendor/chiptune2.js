@@ -36,6 +36,10 @@ ChiptuneJsPlayer.prototype.getCurrentSeconds = function() {
   return libopenmpt._openmpt_module_get_position_seconds(this.currentPlayingNode.modulePtr) - start
 }
 
+ChiptuneJsPlayer.prototype.getCurrentSecondsRaw = function() {
+  return libopenmpt._openmpt_module_get_position_seconds(this.currentPlayingNode.modulePtr)
+}
+
 ChiptuneJsPlayer.prototype.setCurrentSeconds = function(t) {
   let start = this.currentPlayingNode.insn.start || 0
   let out = libopenmpt._openmpt_module_set_position_seconds(this.currentPlayingNode.modulePtr, Math.max(t, 0) + start)
@@ -234,7 +238,7 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
     let ended = false
     let framesToRender = outputL.length
     let realSampleRate = this.context.sampleRate / (this.config.speed || 1)
-    if (this.insn.end && this.player.getCurrentSeconds() > this.insn.end) {
+    if (this.insn.end && this.player.getCurrentSecondsRaw() > this.insn.end) {
       ended = true
     } else
     while (framesToRender > 0) {

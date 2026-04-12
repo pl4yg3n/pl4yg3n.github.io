@@ -435,7 +435,7 @@ function playQueueItem(q, playIndex) {
   setPlayingStyle(q)
   try {
     state.player.play(q.buffer, q.insn)
-    displayMetadata(q)
+    displayMetadataDelayed(q)
     resetProgress()
     withElem('more-options', elem => elem.parentElement.hidden = false)
   } catch (err) {
@@ -481,6 +481,10 @@ function dropQueueChunk(removedIndex, count=1) {
 }
 
 // --- metadata output
+
+function displayMetadataDelayed(q) {
+  requestAnimationFrame(() => displayMetadata(q))
+}
 
 async function displayMetadata(q) {
   let data = q.customMetadata || state.player.metadata()
