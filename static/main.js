@@ -687,10 +687,17 @@ function selectSourceByName(name) {
   if (name.startsWith('@')) {
     let controlName = name
     let currDate = state.mockDate || new Date()
-    let yearDay = currDate.toJSON().slice(5,10)
-    name = holidayProgramFull[yearDay] || hourlyProgram[currDate.getHours()]
+    let hour = currDate.getHours()
+    currDate.setHours(hour - 3) // delay starting new date by 3 night hours
+    let month = currDate.getMonth() + 1
+    let day = currDate.getDate()
+    let weekday = currDate.getDay()
+    month = (month < 10 ? '0' : '') + month
+    day = (day < 10 ? '0' : '') + day
+    let yearDay = month + '-' + day
+    name = holidayProgramFull[yearDay] || hourlyProgram[hour]
     if (name == '@event') {
-      name = holidayProgramEvent[yearDay] || weekdayProgramEvent[currDate.getDay()]
+      name = holidayProgramEvent[yearDay] || weekdayProgramEvent[weekday]
     }
     let toNextHour = 3600500 - Date.now() % 3600000
     state.hourlyRefresh = setTimeout(() => selectPlaylist(controlName), toNextHour)
