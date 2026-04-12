@@ -1213,6 +1213,7 @@ function createGraphButton(parent) {
           canv.height = state.playerConfig.graphParams.h
         })
       }
+      state.player.drawGraph = drawGraphOffload
     }
     if (canv) canv.hidden = !useGraph
   }
@@ -1226,6 +1227,37 @@ function createGraphButton(parent) {
     })
   })
   resetGraph(state.playerConfig.useGraph)
+}
+
+function drawGraphOffload(graphData) {
+  if (state.drawGraphPending != null) cancelAnimationFrame(state.drawGraphPending)
+  state.drawGraphPending = requestAnimationFrame(() => {
+    drawGraph(graphData)
+    state.drawGraphPending = null
+  })
+}
+
+function drawGraph(graphData) {
+  let graphParams = state.playerConfig.graphParams
+  let canv = graphParams.canvas
+  let w = graphParams.w
+  let h = graphParams.h
+  let scaleW = w / graphData.length
+  if (canv.width != w) canv.width = w
+  if (canv.height != h) canv.height = h
+  let c = canv.getContext('2d')
+  c.clearRect(0, 0, w, h)
+  c.globalCompositeOperation = 'screen'
+  c.lineWidth = graphParams.lineWidth
+  for (let l of Object.values(graphData.lines)) {
+    c.beginPath()
+    let scaleH = (l.oh || 0.5) * h
+    for (let i = 0; i < l.data.length; ++i) {
+      c.lineTo((i + 0.5) * scaleW, (1 - l.data[i]) * scaleH)
+    }
+    c.strokeStyle = l.color
+    c.stroke()
+  }
 }
 
 // --- metadata controls

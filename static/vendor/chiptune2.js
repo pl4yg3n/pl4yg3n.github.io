@@ -12,6 +12,7 @@ ChiptuneJsPlayer.prototype.constructor = ChiptuneJsPlayer
 
 ChiptuneJsPlayer.prototype.onTick = () => {}
 ChiptuneJsPlayer.prototype.onEnded = () => {}
+ChiptuneJsPlayer.prototype.drawGraph = () => {}
 
 // metadata
 ChiptuneJsPlayer.prototype.getCurrentRow = function() {
@@ -323,27 +324,7 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
           }
         }
         // output line data to oscilloscope
-        if (lines && useGraph) {
-          let canv = config.graphParams.canvas
-          let w = config.graphParams.w
-          let h = config.graphParams.h
-          let scaleW = w / maxFramesPerChunk
-          if (canv.width != w) canv.width = w
-          if (canv.height != h) canv.height = h
-          let c = canv.getContext('2d')
-          c.clearRect(0, 0, w, h)
-          c.globalCompositeOperation = 'screen'
-          c.lineWidth = config.graphParams.lineWidth
-          for (let l of Object.values(lines)) {
-            c.beginPath()
-            let scaleH = (l.oh || 0.5) * h
-            for (let i = 0; i < l.data.length; ++i) {
-              c.lineTo((i + 0.5) * scaleW, (1 - l.data[i]) * scaleH)
-            }
-            c.strokeStyle = l.color
-            c.stroke()
-          }
-        }
+        if (lines && useGraph) this.player.drawGraph({lines, length: maxFramesPerChunk})
       }
       if (actualFramesPerChunk < framesPerChunk) {
         outputL.fill(0, framesRendered + actualFramesPerChunk, framesRendered + framesPerChunk)
