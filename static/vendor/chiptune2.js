@@ -129,7 +129,7 @@ ChiptuneJsPlayer.prototype.metadata = function(additionalKeys) {
 }
 
 ChiptuneJsPlayer.prototype.play = function(buffer, insn = {}) {
-  if (!insn) insn = {}
+  insn = Object.assign({}, insn)
   this.stop()
   this.currentPlayingNode = this.createLibopenmptNode(buffer, this.config, insn)
   this.setRepeatCount(this.config.repeatCount || +insn['repeat'] || 0)
@@ -138,13 +138,14 @@ ChiptuneJsPlayer.prototype.play = function(buffer, insn = {}) {
     this.setCurrentSeconds(insn.t)
     delete insn.t
   } else if (insn.start) this.setCurrentSeconds(0)
-  this.currentPlayingNode.reconnect()
+  if (!this.currentPlayingNode.paused) this.currentPlayingNode.reconnect()
 }
 
 ChiptuneJsPlayer.prototype.recreate = function() {
   let buffer = this.currentPlayingNode.buffer
   let insn = this.currentPlayingNode.insn
   insn.t = this.getCurrentSeconds()
+  insn.paused = this.currentPlayingNode.paused
   this.play(buffer, insn)
 }
 
@@ -169,6 +170,7 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
   processNode.insn = insn
   processNode.buffer = buffer
   processNode.player = this
+  processNode.paused = !!insn.paused
   let byteArray = new Int8Array(buffer)
   let ptrToFile = libopenmpt._malloc(byteArray.byteLength)
   processNode.ptrToFile = ptrToFile
@@ -178,7 +180,7 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
     libopenmpt._free(this.ptrToFile)
     throw 'Bad file or unsupported file format'
   }
-  processNode.paused = false
+
   processNode.leftBufferPtr  = libopenmpt._malloc(4 * maxFramesPerChunk)
   processNode.rightBufferPtr = libopenmpt._malloc(4 * maxFramesPerChunk)
   processNode.cleanup = function() {
@@ -221,6 +223,7 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
       this.pause()
     }
   }
+
   processNode.onaudioprocess = function(e) {
     let outputL = e.outputBuffer.getChannelData(0)
     let outputR = e.outputBuffer.getChannelData(1)
@@ -251,13 +254,12 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
         let rawAudioLeft = HEAPF32.subarray(this.leftBufferPtr / 4, this.leftBufferPtr / 4 + actualFramesPerChunk)
         let rawAudioRight = HEAPF32.subarray(this.rightBufferPtr / 4, this.rightBufferPtr / 4 + actualFramesPerChunk)
         let lines = null
-        let useGraph = config.useGraph && config.graphParams.canvas
         if (!config.smoothing) {
           // just copy raw data
           outputL.set(rawAudioLeft, framesRendered)
           outputR.set(rawAudioRight, framesRendered)
           // dump line data if needed
-          if (useGraph) {
+          if (config.useGraph) {
             lines = {
               l: {data: rawAudioLeft, color: '#05f'},
               r: {data: rawAudioRight, color: '#f50'},
@@ -283,14 +285,16 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
           }
           let v = processNode.vals
           // setup line data dumping if needed
-          if (useGraph) {
+          if (config.useGraph) {
             lines = {
               vol: {data: [], color: '#f00', oh: 1},
               mav: {data: [], color: '#a00', oh: 1},
               vsm: {data: [], color: '#0f0', oh: 1},
               smu: {data: [], color: '#f0f', oh: 1},
-              raw: {data: [], color: '#fa0'},
-              out: {data: [], color: '#0af'},
+              outL: {data: [], color: '#0af'},
+              outR: {data: [], color: '#fa0'},
+              l: {data: rawAudioLeft, color: '#05f'},
+              r: {data: rawAudioRight, color: '#f50'},
             }
           }
           for (let i = 0; i < actualFramesPerChunk; ++i) {
@@ -314,8 +318,8 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
             v.prevR0 = currR0
             // dump line data if needed
             if (lines) {
-              lines.raw.data.push(rawAudioLeft[i])
-              lines.out.data.push(v.prevOutL)
+              lines.outL.data.push(v.prevOutL)
+              lines.outR.data.push(v.prevOutR)
               lines.mav.data.push(v.volAvg1L)
               lines.vol.data.push(volL)
               lines.vsm.data.push(v.volAvg2L)
@@ -324,7 +328,11 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
           }
         }
         // output line data to oscilloscope
-        if (lines && useGraph) this.player.drawGraph({lines, length: maxFramesPerChunk})
+        if (lines && config.useGraph) this.player.drawGraph({
+          lines,
+          length: maxFramesPerChunk,
+          sampleRate: this.context.sampleRate,
+        })
       }
       if (actualFramesPerChunk < framesPerChunk) {
         outputL.fill(0, framesRendered + actualFramesPerChunk, framesRendered + framesPerChunk)

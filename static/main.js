@@ -181,11 +181,19 @@ const state = {
     bubbleIntroMs: 750,
     tickFactor: 1 / 3,
     maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
-    useGraph: !!params.graph,
+    useGraph: params.graph,
     graphParams: {
+      // canvas
       w: 2048,
       h: 320,
+      // wave graph
       lineWidth: 1.5,
+      // spectral graph
+      pixelWidth: 1,
+      spectralSampleSize: 1024,
+      nOscillators: 128,
+      hzFrom: 100,
+      hzTo: 25600,
     }
   },
   player: null, // wasm backend to play buffer
@@ -217,6 +225,7 @@ async function launchPlayer() {
   state.player = new ChiptuneJsPlayer(state.playerConfig)
   state.player.onEnded = playNext
   state.player.onTick = updateProgress
+  state.player.drawGraph = drawGraphOffload
 }
 
 function setMediaIcon() {
@@ -1210,30 +1219,41 @@ function createBufferSelect(parent) {
 
 function createGraphButton(parent) {
   function resetGraph(useGraph) {
-    let canv = document.getElementById('oscilloscope')
-    if (useGraph) {
-      if (!canv) {
-        canv = makeElem(document.body, 'canvas', canv => {
-          canv.id = 'oscilloscope'
-          state.playerConfig.graphParams.canvas = canv
-          canv.width = state.playerConfig.graphParams.w
-          canv.height = state.playerConfig.graphParams.h
-        })
-      }
-      state.player.drawGraph = drawGraphOffload
-    }
+    let canv = getGraph(useGraph)
     if (canv) canv.hidden = !useGraph
   }
   makeElem(parent, 'button', button => {
     button.textContent = '📈'
-    button.title = 'Toggle wave graph output'
+    button.title = [
+      'Toggle graph outputs:',
+      '- Wave graph: visualize right (blue) and left (orange) audio',
+      '- Spectral graph: draw volume histogram for a spectrum of frequencies',
+      'For smooth output, try smaller buffer size',
+    ].join('\n')
     button.addEventListener('click', () => {
-      let useGraph = !state.playerConfig.useGraph
+      let useGraph = state.playerConfig.useGraph
+      if (useGraph == true) useGraph = 'spectral'
+      else useGraph = !useGraph
       state.playerConfig.useGraph = useGraph
+      state.playerConfig.graphParams.clearCanvas = true
       resetGraph(useGraph)
     })
   })
-  resetGraph(state.playerConfig.useGraph)
+  state.resetGraph = resetGraph
+}
+
+function getGraph(useGraph) {
+  let canv = document.getElementById('oscilloscope')
+  if (useGraph) {
+    if (!canv) {
+      canv = makeElem(document.body, 'canvas', canv => {
+        canv.id = 'oscilloscope'
+        canv.width = state.playerConfig.graphParams.w
+        canv.height = state.playerConfig.graphParams.h
+      })
+    }
+  }
+  return canv
 }
 
 function drawGraphOffload(graphData) {
@@ -1245,8 +1265,17 @@ function drawGraphOffload(graphData) {
 }
 
 function drawGraph(graphData) {
+  let useGraph = state.playerConfig.useGraph
+  if (!useGraph) return
   let graphParams = state.playerConfig.graphParams
-  let canv = graphParams.canvas
+  let canv = getGraph(useGraph)
+  switch(useGraph) {
+    case 'spectral': return drawSpectrum(canv, graphData, graphParams)
+    default: return drawWave(canv, graphData, graphParams)
+  }
+}
+
+function drawWave(canv, graphData, graphParams) {
   let w = graphParams.w
   let h = graphParams.h
   let scaleW = w / graphData.length
@@ -1265,6 +1294,80 @@ function drawGraph(graphData) {
     c.strokeStyle = l.color
     c.stroke()
   }
+}
+
+function drawSpectrum(canv, graphData, graphParams) {
+  let w = graphParams.w
+  let h = graphParams.h
+  let pixelWidth = graphParams.pixelWidth
+  if (canv.width != w) canv.width = w
+  if (canv.height != h) canv.height = h
+  let c = canv.getContext('2d')
+  c.globalCompositeOperation = 'source-over'
+  let spectralData = computeSpectrum(graphData, graphParams)
+  let offset = spectralData.length
+  if (graphParams.clearCanvas) {
+    c.clearRect(0, 0, w, h)
+    graphParams.clearCanvas = false
+  } else {
+    c.drawImage(canv, -pixelWidth * offset, 0)
+  }
+  spectralData.forEach((spectralSample, j) => spectralSample.forEach((v, i) => {
+    c.fillStyle = numberToColor(Math.log(v))
+    let n = spectralSample.length
+    let y0 = Math.round((n - i - 1) / n * h)
+    let y1 = Math.round((n - i) / n * h)
+    c.fillRect(w - pixelWidth * (offset - j), y0, pixelWidth, y1 - y0)
+  }))
+}
+
+function numberToColor(v) { // for values mostly in [-5, 5]
+  let r = Math.round(v > 2 ? 255 : 255/(((v-2)**2)/3+1) + 32/(((v+2.5)**2)/3+1))||0
+  let g = Math.round(v > 7 ? 255 : 255/(((v-0.5)**2)/2.5+1) + 255/(((v-7)**2)+1))||0
+  let b = Math.round(v > 5 ? 255 : 255/(((v+1.5)**2)/2+1) + 255/(((v-5)**2)+1))||0
+  return `rgb(${r} ${g} ${b})`
+}
+
+function computeSpectrum(graphData, graphParams) {
+  let dataL = graphData.lines.l.data
+  let dataR = graphData.lines.r.data
+  let n = graphParams.nOscillators
+  let freqStep = (graphParams.hzTo / graphParams.hzFrom) ** (1 / n)
+  let sinTable = new Float32Array(n)
+  let cosTable = new Float32Array(n)
+  for (let k = 0; k < n; k++) {
+    let freq = graphParams.hzFrom * freqStep ** k
+    let phi = 2 * Math.PI * freq / graphData.sampleRate
+    cosTable[k] = Math.cos(phi)
+    sinTable[k] = Math.sin(phi)
+  }
+  let i = 0
+  let x0L = dataL[i]
+  let x0R = dataR[i]
+  let results = []
+  while (i < graphData.length) {
+    let localLimit = Math.min(graphData.length, i + graphParams.spectralSampleSize)
+    let x = new Float32Array(n)
+    let y = new Float32Array(n)
+    while (++i < localLimit) {
+      let x1L = dataL[i]
+      let x1R = dataR[i]
+      let dx = x1L - x0L + x1R - x0R
+      for (let k = 0; k < n; k++) {
+        let xk = x[k]
+        let yk = y[k]
+        x[k] = xk * cosTable[k] + dx - yk * sinTable[k]
+        y[k] = xk * sinTable[k] + yk * cosTable[k]
+      }
+      x0L = x1L
+      x0R = x1R
+    }
+    for (let k = 0; k < n; k++) {
+      x[k] = Math.hypot(x[k], y[k])
+    }
+    results.push(x)
+  }
+  return results
 }
 
 // --- metadata controls
@@ -1441,7 +1544,8 @@ function saveSession() {
     anim: state.anim.enabled,
     autoplay: isPlaying(),
     pl: state.sourceName == params.pl ? params.pl : null,
-    exp: Date.now() + state.playerConfig.restoreOnRefreshExpireMs
+    exp: Date.now() + state.playerConfig.restoreOnRefreshExpireMs,
+    graph: state.playerConfig.useGraph,
   })
 }
 
@@ -1454,6 +1558,7 @@ function setSession(s) {
   if (!s) return
   try {
     s = JSON.parse(s)
+    console.debug('Setting session:', s)
     if (s.exp && Date.now() > s.exp) return
     if (params.pl && s.pl != params.pl) return
     delete s.exp
