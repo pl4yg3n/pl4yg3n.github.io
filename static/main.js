@@ -137,13 +137,13 @@ const visualOutputs = [
 ]
 
 const waveProps = {
-  l: {color: '#05f'},
+  l: {color: '#0af'},
   r: {color: '#f50'},
   vol: {color: '#f00', oh: 1},
   mav: {color: '#a00', oh: 1},
   vsm: {color: '#0f0', oh: 1},
   smu: {color: '#f0f', oh: 1},
-  outL: {color: '#0af'},
+  outL: {color: '#05f'},
   outR: {color: '#fa0'},
 }
 
@@ -206,7 +206,7 @@ const state = {
       w: 2048,
       h: 320,
       // wave graph
-      lineWidth: 1.5,
+      lineWidth: 2.5,
       // spectral graphs
       histogramPixelWidth: 1,
       samplesPerAnimFrame: 1024,
