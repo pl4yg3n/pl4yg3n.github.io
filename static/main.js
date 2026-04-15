@@ -217,7 +217,8 @@ const state = {
       spectrumBarRange: 7,
       spectrumFallSpeed: 2,
       spectrumOpacity: 0.3,
-      spectrumCompositeOperation: 'destination-over'
+      spectrumCompositeOperation: 'destination-over',
+      smoothenSpectrum: true,
     }
   },
   player: null, // wasm backend to play buffer
@@ -1384,6 +1385,7 @@ function drawSpectrum(canv, graphData, graphParams) {
   c.globalAlpha = graphParams.spectrumOpacity
   spectralData.forEach(spectralSample => {
     fall -= graphParams.spectrumFallSpeed
+    if (graphParams.smoothenSpectrum) spectralSample = smoothSpectrum(spectralSample)
     spectralSample.forEach((v, i) => {
       v = Math.log(v)
       c.fillStyle = heatmapColor(v)
@@ -1395,6 +1397,16 @@ function drawSpectrum(canv, graphData, graphParams) {
     })
   })
   c.globalAlpha = 1
+}
+
+function smoothSpectrum(spectralSample) {
+  let n = spectralSample.length
+  let spectralSampleNew = new Float32Array(n)
+  for (let i = 0; i < n; i++) {
+    let t = 0.25 * i / n
+    spectralSampleNew[i] = spectralSample[i] * (1 - 2 * t) + t * ((spectralSample[i-1] || 0) + (spectralSample[i+1] || 0))
+  }
+  return spectralSampleNew
 }
 
 function heatmapColor(v) { // for values mostly in [-5, 5]
