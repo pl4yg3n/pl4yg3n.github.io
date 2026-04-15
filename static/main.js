@@ -128,6 +128,25 @@ const playlistAlias = {
   unaccepted: '*c:udx;:!dup;:!d:v',
 }
 
+// --- visual output config
+
+const visualOutputs = [
+  {id: 'spectrum', f: drawSpectrum, description: 'Spectrum wave: equalizer-style spectrum of frequencies'},
+  {id: 'spectrogram', f: drawSpectrogram, description: 'Spectrogram: histogram for a spectrum of frequencies'},
+  {id: 'soundwave', f: drawWave, description: 'Sound wave: raw lines for stereo (left - blue, right - orange)'},
+]
+
+const waveProps = {
+  l: {color: '#05f'},
+  r: {color: '#f50'},
+  vol: {color: '#f00', oh: 1},
+  mav: {color: '#a00', oh: 1},
+  vsm: {color: '#0f0', oh: 1},
+  smu: {color: '#f0f', oh: 1},
+  outL: {color: '#0af'},
+  outR: {color: '#fa0'},
+}
+
 // --- player config
 
 const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'mptm', 'mt2', 'stm'] // openmpt can play only those
@@ -181,19 +200,24 @@ const state = {
     bubbleIntroMs: 750,
     tickFactor: 1 / 3,
     maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
-    useGraph: params.graph,
+    useGraph: ((id) => visualOutputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || 'spectrum'),
     graphParams: {
       // canvas
       w: 2048,
       h: 320,
       // wave graph
       lineWidth: 1.5,
-      // spectral graph
-      pixelWidth: 1,
+      // spectral graphs
+      histogramPixelWidth: 1,
+      samplesPerAnimFrame: 1024,
       spectralSampleSize: 1024,
       nOscillators: 128,
       hzFrom: 100,
       hzTo: 25600,
+      spectrumBarRange: 7,
+      spectrumFallSpeed: 2,
+      spectrumOpacity: 0.3,
+      spectrumCompositeOperation: 'destination-over'
     }
   },
   player: null, // wasm backend to play buffer
@@ -1226,14 +1250,13 @@ function createGraphButton(parent) {
     button.textContent = '📈'
     button.title = [
       'Toggle graph outputs:',
-      '- Wave graph: visualize right (blue) and left (orange) audio',
-      '- Spectral graph: draw volume histogram for a spectrum of frequencies',
+      visualOutputs.map(g => '- ' + g.description).join('\n'),
       'For smooth output, try smaller buffer size',
     ].join('\n')
     button.addEventListener('click', () => {
       let useGraph = state.playerConfig.useGraph
-      if (useGraph == true) useGraph = 'spectral'
-      else useGraph = !useGraph
+      useGraph = visualOutputs[visualOutputs.indexOf(useGraph) + 1] || null
+      localStorage['playgen:visual'] = useGraph ? useGraph.id : 'none'
       state.playerConfig.useGraph = useGraph
       state.playerConfig.graphParams.clearCanvas = true
       resetGraph(useGraph)
@@ -1256,12 +1279,31 @@ function getGraph(useGraph) {
   return canv
 }
 
-function drawGraphOffload(graphData) {
-  if (state.drawGraphPending != null) cancelAnimationFrame(state.drawGraphPending)
+function drawGraphOffload(graphData, lowPriority = false) {
+  if (!graphData || !graphData.length) return
+  if (state.drawGraphPending != null) {
+    if (lowPriority) return
+    cancelAnimationFrame(state.drawGraphPending)
+  }
   state.drawGraphPending = requestAnimationFrame(() => {
-    drawGraph(graphData)
     state.drawGraphPending = null
+    let sliced = sliceGraphData(graphData, state.playerConfig.graphParams.samplesPerAnimFrame)
+    drawGraph(sliced.now)
+    drawGraphOffload(sliced.later, true)
   })
+}
+
+function sliceGraphData(graphData, limit) {
+  if (graphData.length <= limit) return {now: graphData, later: null}
+  let sliced = {
+    now: {length: limit, sampleRate: graphData.sampleRate, lines: {}},
+    later: {length: graphData.length - limit, sampleRate: graphData.sampleRate, lines: {}}
+  }
+  for (let k in graphData.lines) {
+    sliced.now.lines[k] = graphData.lines[k].slice(0, limit)
+    sliced.later.lines[k] = graphData.lines[k].slice(limit)
+  }
+  return sliced
 }
 
 function drawGraph(graphData) {
@@ -1269,10 +1311,7 @@ function drawGraph(graphData) {
   if (!useGraph) return
   let graphParams = state.playerConfig.graphParams
   let canv = getGraph(useGraph)
-  switch(useGraph) {
-    case 'spectral': return drawSpectrum(canv, graphData, graphParams)
-    default: return drawWave(canv, graphData, graphParams)
-  }
+  useGraph.f(canv, graphData, graphParams)
 }
 
 function drawWave(canv, graphData, graphParams) {
@@ -1285,21 +1324,23 @@ function drawWave(canv, graphData, graphParams) {
   c.clearRect(0, 0, w, h)
   c.globalCompositeOperation = 'screen'
   c.lineWidth = graphParams.lineWidth
-  for (let l of Object.values(graphData.lines)) {
+  for (let k in graphData.lines) {
+    let l = graphData.lines[k]
+    let props = waveProps[k] || {color: '#ccc'}
     c.beginPath()
-    let scaleH = (l.oh || 0.5) * h
-    for (let i = 0; i < l.data.length; ++i) {
-      c.lineTo((i + 0.5) * scaleW, (1 - l.data[i]) * scaleH)
+    let scaleH = (props.oh || 0.5) * h
+    for (let i = 0; i < l.length; ++i) {
+      c.lineTo((i + 0.5) * scaleW, (1 - l[i]) * scaleH)
     }
-    c.strokeStyle = l.color
+    c.strokeStyle = props.color
     c.stroke()
   }
 }
 
-function drawSpectrum(canv, graphData, graphParams) {
+function drawSpectrogram(canv, graphData, graphParams) {
   let w = graphParams.w
   let h = graphParams.h
-  let pixelWidth = graphParams.pixelWidth
+  let histogramPixelWidth = graphParams.histogramPixelWidth
   if (canv.width != w) canv.width = w
   if (canv.height != h) canv.height = h
   let c = canv.getContext('2d')
@@ -1310,18 +1351,52 @@ function drawSpectrum(canv, graphData, graphParams) {
     c.clearRect(0, 0, w, h)
     graphParams.clearCanvas = false
   } else {
-    c.drawImage(canv, -pixelWidth * offset, 0)
+    c.drawImage(canv, -histogramPixelWidth * offset, 0)
   }
   spectralData.forEach((spectralSample, j) => spectralSample.forEach((v, i) => {
-    c.fillStyle = numberToColor(Math.log(v))
+    c.fillStyle = heatmapColor(Math.log(v))
     let n = spectralSample.length
     let y0 = Math.round((n - i - 1) / n * h)
     let y1 = Math.round((n - i) / n * h)
-    c.fillRect(w - pixelWidth * (offset - j), y0, pixelWidth, y1 - y0)
+    c.fillRect(w - histogramPixelWidth * (offset - j), y0, histogramPixelWidth, y1 - y0)
   }))
 }
 
-function numberToColor(v) { // for values mostly in [-5, 5]
+function drawSpectrum(canv, graphData, graphParams) {
+  let w = graphParams.w
+  let h = graphParams.h
+  let scale = graphParams.spectrumBarRange
+  if (canv.width != w) canv.width = w
+  if (canv.height != h) canv.height = h
+  let c = canv.getContext('2d')
+  let spectralData = computeSpectrum(graphData, graphParams)
+  c.globalCompositeOperation = 'copy'
+  let fall = graphParams.spectrumFallSpeed * spectralData.length
+  if (graphParams.clearCanvas) {
+    c.clearRect(0, 0, w, h)
+    graphParams.clearCanvas = false
+  } else {
+    c.drawImage(canv, 0, fall)
+    c.clearRect(0, 0, w, fall)
+  }
+  c.globalCompositeOperation = graphParams.spectrumCompositeOperation
+  c.globalAlpha = graphParams.spectrumOpacity
+  spectralData.forEach(spectralSample => {
+    fall -= graphParams.spectrumFallSpeed
+    spectralSample.forEach((v, i) => {
+      v = Math.log(v)
+      c.fillStyle = heatmapColor(v)
+      let n = spectralSample.length
+      let x0 = Math.round(i / n * w)
+      let x1 = Math.round((i + 1) / n * w)
+      let y = h / 2 * (1 - v / scale) + fall
+      if (y < h) c.fillRect(x0, y, x1 - x0, h - y)
+    })
+  })
+  c.globalAlpha = 1
+}
+
+function heatmapColor(v) { // for values mostly in [-5, 5]
   let r = Math.round(v > 2 ? 255 : 255/(((v-2)**2)/3+1) + 32/(((v+2.5)**2)/3+1))||0
   let g = Math.round(v > 7 ? 255 : 255/(((v-0.5)**2)/2.5+1) + 255/(((v-7)**2)+1))||0
   let b = Math.round(v > 5 ? 255 : 255/(((v+1.5)**2)/2+1) + 255/(((v-5)**2)+1))||0
@@ -1329,8 +1404,8 @@ function numberToColor(v) { // for values mostly in [-5, 5]
 }
 
 function computeSpectrum(graphData, graphParams) {
-  let dataL = graphData.lines.l.data
-  let dataR = graphData.lines.r.data
+  let dataL = graphData.lines.l
+  let dataR = graphData.lines.r
   let n = graphParams.nOscillators
   let freqStep = (graphParams.hzTo / graphParams.hzFrom) ** (1 / n)
   let sinTable = new Float32Array(n)
@@ -1367,6 +1442,7 @@ function computeSpectrum(graphData, graphParams) {
     }
     results.push(x)
   }
+  if (!Number.isFinite(results[0][0]) || results[0][0] > 9000) console.log(results[0], graphData)
   return results
 }
 
@@ -1545,7 +1621,6 @@ function saveSession() {
     autoplay: isPlaying(),
     pl: state.sourceName == params.pl ? params.pl : null,
     exp: Date.now() + state.playerConfig.restoreOnRefreshExpireMs,
-    graph: state.playerConfig.useGraph,
   })
 }
 

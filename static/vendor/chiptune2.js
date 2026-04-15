@@ -200,6 +200,7 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
       libopenmpt._free(this.rightBufferPtr)
       this.rightBufferPtr = 0
     }
+    this.onaudioprocess = null
   }
   processNode.stop = function() {
     this.disconnect()
@@ -261,8 +262,8 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
           // dump line data if needed
           if (config.useGraph) {
             lines = {
-              l: {data: rawAudioLeft, color: '#05f'},
-              r: {data: rawAudioRight, color: '#f50'},
+              l: new Float32Array(rawAudioLeft),
+              r: new Float32Array(rawAudioRight),
             }
           }
         } else {
@@ -287,14 +288,14 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
           // setup line data dumping if needed
           if (config.useGraph) {
             lines = {
-              vol: {data: [], color: '#f00', oh: 1},
-              mav: {data: [], color: '#a00', oh: 1},
-              vsm: {data: [], color: '#0f0', oh: 1},
-              smu: {data: [], color: '#f0f', oh: 1},
-              outL: {data: [], color: '#0af'},
-              outR: {data: [], color: '#fa0'},
-              l: {data: rawAudioLeft, color: '#05f'},
-              r: {data: rawAudioRight, color: '#f50'},
+              vol: new Float32Array(actualFramesPerChunk),
+              mav: new Float32Array(actualFramesPerChunk),
+              vsm: new Float32Array(actualFramesPerChunk),
+              smu: new Float32Array(actualFramesPerChunk),
+              outL: new Float32Array(actualFramesPerChunk),
+              outR: new Float32Array(actualFramesPerChunk),
+              l: new Float32Array(rawAudioLeft),
+              r: new Float32Array(rawAudioRight),
             }
           }
           for (let i = 0; i < actualFramesPerChunk; ++i) {
@@ -318,19 +319,19 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
             v.prevR0 = currR0
             // dump line data if needed
             if (lines) {
-              lines.outL.data.push(v.prevOutL)
-              lines.outR.data.push(v.prevOutR)
-              lines.mav.data.push(v.volAvg1L)
-              lines.vol.data.push(volL)
-              lines.vsm.data.push(v.volAvg2L)
-              lines.smu.data.push(s0L)
+              lines.outL[i] = v.prevOutL
+              lines.outR[i] = v.prevOutR
+              lines.mav[i] = v.volAvg1L
+              lines.vol[i] = volL
+              lines.vsm[i] = v.volAvg2L
+              lines.smu[i] = s0L
             }
           }
         }
         // output line data to oscilloscope
         if (lines && config.useGraph) this.player.drawGraph({
           lines,
-          length: maxFramesPerChunk,
+          length: actualFramesPerChunk,
           sampleRate: this.context.sampleRate,
         })
       }
