@@ -1249,7 +1249,7 @@ function createGraphButton(parent) {
   makeElem(parent, 'button', button => {
     button.textContent = '📈'
     button.title = [
-      'Toggle graph outputs:',
+      'Toggle graph outputs [Shift \\]',
       visualOutputs.map(g => '- ' + g.description).join('\n'),
       'For smooth output, try smaller buffer size',
     ].join('\n')
@@ -1261,6 +1261,7 @@ function createGraphButton(parent) {
       state.playerConfig.graphParams.clearCanvas = true
       resetGraph(useGraph)
     })
+    state.keyDownListeners['BackslashShift'] = () => button.click()
   })
   state.resetGraph = resetGraph
 }
