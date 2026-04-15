@@ -1,8 +1,8 @@
 ﻿'use strict'
 const libopenmpt = {}
 
-const params = parseUrlParams()
-initSession()
+const params = safely(parseUrlParams, {})
+safely(initSession)
 
 // --- playing program config
 
@@ -235,18 +235,23 @@ const state = {
   keyDownListeners: {},
   favorites: [],
 }
-try {
+safely(() => {
   let favString = localStorage['playgen:favorites']
   state.favorites = favString ? JSON.parse(favString) : []
-} catch (err) {
-  console.error(err)
+})
+
+function safely(f, fallback) {
+  try { return f() } catch(err) {
+    console.error(f)
+    return fallback
+  }
 }
 
 // --- playing logic init
 
 async function launchPlayer() {
-  setMediaIcon()
-  await createFakeAudioToMakeMediaSessionWork()
+  safely(setMediaIcon)
+  await safely(createFakeAudioToMakeMediaSessionWork)
   state.player = new ChiptuneJsPlayer(state.playerConfig)
   state.player.onEnded = playNext
   state.player.onTick = updateProgress
@@ -631,6 +636,10 @@ async function loadIndex() {
     .then(generatePlaylists)
     .then(createControls)
     .then(ready)
+    .catch(err => {
+      console.error(err)
+      setGraffitiStatus('error')
+    })
 }
 
 function parseIndex(fileContents) {
@@ -863,7 +872,7 @@ function createPauseButton(parent) {
         e.textContent = ['I>', 'II'][+isPlayingNow]
         e.title = ['Play', 'Pause'][+isPlayingNow] + ' [Space]'
         updateGraffitiAnim()
-        navigator.mediaSession.playbackState = isPlayingNow ? 'playing' : 'paused'
+        safely(() => navigator.mediaSession.playbackState = isPlayingNow ? 'playing' : 'paused')
       }
       state.resetPause()
     },
@@ -917,10 +926,10 @@ function createPlayButton(parent, init, action, mediaEvents, key) {
     init(e)
     e.addEventListener('click', action)
   })
-  mediaEvents.forEach(eventName => navigator.mediaSession.setActionHandler(eventName, () => {
+  safely(() => mediaEvents.forEach(eventName => navigator.mediaSession.setActionHandler(eventName, () => {
     console.debug('Media Event: ' + eventName)
     action()
-  }))
+  })))
   state.keyDownListeners[key] = action
 }
 
@@ -1510,6 +1519,7 @@ function copyToClipboard(text) {
   try {
     navigator.clipboard.writeText(text)
   } catch(err) {
+    console.error(err)
     return false
   }
   return true
@@ -1697,9 +1707,11 @@ function createGraffiti() {
 }
 
 function setGraffitiStatus(status) {
-  let text = graffitiText[status]
-  Array.from(state.graffiti.children).forEach((e, i) => e.textContent = text[i])
-  state.graffiti.classList[['add', 'remove'][+(status != 'loading')]]('loading')
+  safely(() => {
+    let text = graffitiText[status]
+    Array.from(state.graffiti.children).forEach((e, i) => e.textContent = text[i])
+    state.graffiti.classList[['add', 'remove'][+(status != 'loading')]]('loading')
+  })
 }
 
 function updateGraffitiAnim() {
