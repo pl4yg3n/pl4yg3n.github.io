@@ -123,6 +123,12 @@ ChiptuneJsPlayer.prototype.metadata = function(additionalKeys) {
   // remove all blank lines in front, leave no more than 1 blank line in row, remove whitespace at end
   data.message = data.message.replaceAll(/^( *\n)+/g, '').replaceAll(/( *\n){3,}/g, '\n\n').trimEnd()
 
+  data.header = data.title
+  if (!data.header) {
+    let m = data.message.match(/^.*?[a-z0-9].*$/mi) || data.message.match(/^.*$/m)
+    data.header = m[0].trim()
+  }
+
   //console.log(data.title + '\n---\n' + data.message_raw + '\n---\n' + data.message_instruments + '\n---\n' + data.message_samples)
   //console.log(data.title + '\n---\n' + data.message)
   return data

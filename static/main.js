@@ -197,7 +197,7 @@ const state = {
     restoreOnRefreshExpireMs: 3600000, // 1h
     restoreOnRefreshOnlyIfPlaying: false,
 
-    bubbleIntroMs: 750,
+    bubbleIntroMs: 1000,
     tickFactor: 1 / 3,
     maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
     useGraph: ((id) => visualOutputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || 'spectrum'),
@@ -242,7 +242,7 @@ safely(() => {
 
 function safely(f, fallback) {
   try { return f() } catch(err) {
-    console.error(f)
+    console.error(err)
     return fallback
   }
 }
@@ -250,21 +250,11 @@ function safely(f, fallback) {
 // --- playing logic init
 
 async function launchPlayer() {
-  safely(setMediaIcon)
   await safely(createFakeAudioToMakeMediaSessionWork)
   state.player = new ChiptuneJsPlayer(state.playerConfig)
   state.player.onEnded = playNext
   state.player.onTick = updateProgress
   state.player.drawGraph = drawGraphOffload
-}
-
-function setMediaIcon() {
-  navigator.mediaSession.metadata = new MediaMetadata({
-    artwork: [
-      {src: './static/img/pkey.svg', sizes: '256x256,512x512', type: 'image/svg+xml'},
-      {src: './static/img/pkey256.png', sizes: '256x256', type: 'image/png'},
-    ]
-  })
 }
 
 // --- switching tracks
@@ -474,7 +464,7 @@ function playQueueItem(q, playIndex) {
   setPlayingStyle(q)
   try {
     state.player.play(q.buffer, q.insn)
-    displayMetadataDelayed(q)
+    safely(() => displayMetadataDelayed(q))
     resetProgress()
     withElem('more-options', elem => elem.parentElement.hidden = false)
   } catch (err) {
@@ -522,11 +512,24 @@ function dropQueueChunk(removedIndex, count=1) {
 // --- metadata output
 
 function displayMetadataDelayed(q) {
-  requestAnimationFrame(() => displayMetadata(q))
+  let data = q.customMetadata || state.player.metadata()
+  safely(() => setMediaMetadata(q, data))
+  requestAnimationFrame(() => displayMetadata(q, data))
 }
 
-async function displayMetadata(q) {
-  let data = q.customMetadata || state.player.metadata()
+function setMediaMetadata(q, data) {
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: 'Playgen',
+    album: data.header || q.id,
+    // todo: add artist
+    artwork: [
+      //{src: './static/img/pkey.svg', sizes: '256x256,512x512', type: 'image/svg+xml'},
+      {src: './static/img/pkey256.png', sizes: '256x256', type: 'image/png'},
+    ]
+  })
+}
+
+async function displayMetadata(q, data) {
   withElem('metadata-container', e => e.hidden = false)
   withElem('output-id', e => e.textContent = q.id ? 'id: ' + q.id : (q.fileName || ''))
   state.setupMetadataButtons(q)
