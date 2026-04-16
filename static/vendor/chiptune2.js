@@ -12,7 +12,7 @@ ChiptuneJsPlayer.prototype.constructor = ChiptuneJsPlayer
 
 ChiptuneJsPlayer.prototype.onTick = () => {}
 ChiptuneJsPlayer.prototype.onEnded = () => {}
-ChiptuneJsPlayer.prototype.drawGraph = () => {}
+ChiptuneJsPlayer.prototype.onData = () => {}
 
 // metadata
 ChiptuneJsPlayer.prototype.getCurrentRow = function() {
@@ -335,7 +335,7 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
           }
         }
         // output line data to oscilloscope
-        if (lines && config.useGraph) this.player.drawGraph({
+        if (lines && config.useGraph) this.player.onData({
           lines,
           length: actualFramesPerChunk,
           sampleRate: this.context.sampleRate,

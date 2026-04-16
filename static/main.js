@@ -136,15 +136,34 @@ const visualOutputs = [
   {id: 'soundwave', f: drawWave, description: 'Sound wave: raw lines for stereo (left - blue, right - orange)'},
 ]
 
-const waveProps = {
-  l: {color: '#0af'},
-  r: {color: '#f50'},
-  vol: {color: '#f00', oh: 1},
-  mav: {color: '#a00', oh: 1},
-  vsm: {color: '#0f0', oh: 1},
-  smu: {color: '#f0f', oh: 1},
-  outL: {color: '#05f'},
-  outR: {color: '#fa0'},
+const visConfig = {
+  // canvas
+  w: 2048,
+  h: 320,
+  // spectral graphs
+  histogramPixelWidth: 1,
+  samplesPerAnimFrame: 1024,
+  spectralSampleSize: 1024,
+  nOscillators: 128,
+  hzFrom: 100,
+  hzTo: 25600,
+  spectrumBarRange: 7,
+  spectrumFallSpeed: 2,
+  spectrumOpacity: 0.3,
+  spectrumCompositeOperation: 'destination-over',
+  smoothenSpectrum: true,
+  // wave graph
+  lineWidth: 2.5,
+  waveProps: {
+    l: {color: '#0af'},
+    r: {color: '#f50'},
+    vol: {color: '#f00', oh: 1},
+    mav: {color: '#a00', oh: 1},
+    vsm: {color: '#0f0', oh: 1},
+    smu: {color: '#f0f', oh: 1},
+    outL: {color: '#05f'},
+    outR: {color: '#fa0'},
+  },
 }
 
 // --- player config
@@ -157,6 +176,42 @@ const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'm
 // nst, okt, plm, psm, pt36, ptm, puma, rtm, sfx, sfx2, smod, st26, stk, stm, stx, stp, symmod,
 // gmc, gtk, gt2, ult, unic, wow, xmf, gdm, mo3, oxm, umx, xpk, ppm, mmcmp
 
+const playerConfig = {
+  bufferSize: 1 << Math.min(Math.max(Math.log2(+params.buffer || localStorage['playgen:bufferSize']) || 12, 8), 14),
+  smoothing: Math.abs(+params.smoothing || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
+
+  // speed is a multiplier, but its changes are in log2 scale
+  speed: Math.abs(+params.speed || 1),
+  speedExpStep: 1/8,
+  speedExpMin: -3,
+  speedExpMax: 3,
+  speedExpPrecision: 1/32,
+
+  // all volume in relative millibells
+  volume: Math.min(+params.volume || 0, 0),
+  volumeStep: 250,
+  volumeMin: -4000,
+  volumeMax: 0,
+  volumePrecision: 1,
+  volumeAddForLowVolumeTracks: 500,
+
+  // seek/rewind in seconds
+  rewindStepSeconds: 5,
+  rewindTailSeconds: 20,
+  seekPrecision: 0.1,
+
+  repeatCount: (x => x === true ? -1 : +x)(params.repeat) || null,
+  sequentially: !!params.seq,
+  autoplay: !!params.autoplay,
+  restoreOnRefreshExpireMs: 3600000, // 1h
+  restoreOnRefreshOnlyIfPlaying: false,
+
+  bubbleIntroMs: 1000,
+  tickFactor: 1 / 3,
+  maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
+  useGraph: ((id) => visualOutputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || 'spectrum'),
+}
+
 const urlConfig = {
   collectionUrlRoot: location.hostname.match(/localhost|\d+(\.\d+){3}/) ? './collection/'
     : 'https://raw.githubusercontent.com/pl4yg3n/collection/refs/heads/main/',
@@ -166,61 +221,8 @@ const urlConfig = {
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
   modArchiveMaxId: 213304,
 }
+
 const state = {
-  playerConfig: {
-    bufferSize: 1 << Math.min(Math.max(Math.log2(+params.buffer || localStorage['playgen:bufferSize']) || 12, 8), 14),
-    smoothing: Math.abs(+params.smoothing || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
-
-    // speed is a multiplier, but its changes are in log2 scale
-    speed: Math.abs(+params.speed || 1),
-    speedExpStep: 1/8,
-    speedExpMin: -3,
-    speedExpMax: 3,
-    speedExpPrecision: 1/32,
-
-    // all volume in relative millibells
-    volume: Math.min(+params.volume || 0, 0),
-    volumeStep: 250,
-    volumeMin: -4000,
-    volumeMax: 0,
-    volumePrecision: 1,
-    volumeAddForLowVolumeTracks: 500,
-
-    // seek/rewind in seconds
-    rewindStepSeconds: 5,
-    rewindTailSeconds: 20,
-    seekPrecision: 0.1,
-
-    repeatCount: (x => x === true ? -1 : +x)(params.repeat) || null,
-    sequentially: !!params.seq,
-    autoplay: !!params.autoplay,
-    restoreOnRefreshExpireMs: 3600000, // 1h
-    restoreOnRefreshOnlyIfPlaying: false,
-
-    bubbleIntroMs: 1000,
-    tickFactor: 1 / 3,
-    maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
-    useGraph: ((id) => visualOutputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || 'spectrum'),
-    graphParams: {
-      // canvas
-      w: 2048,
-      h: 320,
-      // wave graph
-      lineWidth: 2.5,
-      // spectral graphs
-      histogramPixelWidth: 1,
-      samplesPerAnimFrame: 1024,
-      spectralSampleSize: 1024,
-      nOscillators: 128,
-      hzFrom: 100,
-      hzTo: 25600,
-      spectrumBarRange: 7,
-      spectrumFallSpeed: 2,
-      spectrumOpacity: 0.3,
-      spectrumCompositeOperation: 'destination-over',
-      smoothenSpectrum: true,
-    }
-  },
   player: null, // wasm backend to play buffer
   queue: [], // playing sequence (history + current + enqueued)
   queueIndex: -1, // queue position of currently played item
@@ -251,10 +253,10 @@ function safely(f, fallback) {
 
 async function launchPlayer() {
   await safely(createFakeAudioToMakeMediaSessionWork)
-  state.player = new ChiptuneJsPlayer(state.playerConfig)
+  state.player = new ChiptuneJsPlayer(playerConfig)
   state.player.onEnded = playNext
   state.player.onTick = updateProgress
-  state.player.drawGraph = drawGraphOffload
+  state.player.onData = drawGraphOffload
 }
 
 // --- switching tracks
@@ -315,7 +317,7 @@ async function enqNext(hint) {
 
 function pick(arr, hint) {
   if (arr.length == 0) throw 'Cannot pick from empty array!'
-  if (state.playerConfig.sequentially) {
+  if (playerConfig.sequentially) {
     if (hint && hint.e) {
       let index = arr.indexOf(hint.e) + 1
       if (index == arr.length) {
@@ -377,7 +379,7 @@ async function enqEntry(e, solid=1, customMetadata) {
       t: getTimeParamOnce(),
       end: e.tags['t:end'],
       repeat: e.tags['repeat'],
-      gainMillibells: (e.tags['d:lvol'] || 0) * state.playerConfig.volumeAddForLowVolumeTracks,
+      gainMillibells: (e.tags['d:lvol'] || 0) * playerConfig.volumeAddForLowVolumeTracks,
     },
     id: e.md5.slice(0, 10),
     idMa: +e.tags['id:ma'] || +e.tags['id:dup:ma'] || null,
@@ -484,7 +486,7 @@ function unlistQueueItem(q) {
 }
 
 function trimQueueHistory() {
-  let removeTo = state.queueIndex - state.playerConfig.maxQueueHistorySize
+  let removeTo = state.queueIndex - playerConfig.maxQueueHistorySize
   if (removeTo <= 0) return false
   return dropQueueChunk(0, removeTo)
 }
@@ -819,7 +821,7 @@ function ready() {
     elem.role = 'button'
   })
   // params.autoplay: launch if possible
-  if (state.playerConfig.autoplay) {
+  if (playerConfig.autoplay) {
     // Wasm doesn't load in order so need to wait until it loads and only then start
     // todo: ensure it in launchPlayer
     function playWhenReady() {
@@ -941,9 +943,9 @@ function assignSeekKeybinds() {
     if (!state.player || !state.player.currentPlayingNode) return
     state.player.setCurrentSeconds(f())
   }
-  setSeekKeybind('ArrowRightAlt', () => state.player.getCurrentSeconds() + state.playerConfig.rewindStepSeconds)
-  setSeekKeybind('ArrowLeftAlt', () => state.player.getCurrentSeconds() - state.playerConfig.rewindStepSeconds)
-  setSeekKeybind('ArrowRightShift', () => state.player.getTotalSeconds() - state.playerConfig.rewindTailSeconds)
+  setSeekKeybind('ArrowRightAlt', () => state.player.getCurrentSeconds() + playerConfig.rewindStepSeconds)
+  setSeekKeybind('ArrowLeftAlt', () => state.player.getCurrentSeconds() - playerConfig.rewindStepSeconds)
+  setSeekKeybind('ArrowRightShift', () => state.player.getTotalSeconds() - playerConfig.rewindTailSeconds)
   setSeekKeybind('ArrowLeftShift', () => 0)
 }
 
@@ -956,7 +958,7 @@ function createSeekBar(row) {
     state.seekbar = bar
     bar.oninput = () => {
       if (!state.player) return
-      let t = bar.value * state.playerConfig.seekPrecision
+      let t = bar.value * playerConfig.seekPrecision
       state.player.setCurrentSeconds(t)
     }
   })
@@ -991,7 +993,7 @@ function durationToString(t) {
 
 function resetProgress() {
   let duration = state.player.getTotalSeconds()
-  state.seekbar.max = Math.ceil(duration / state.playerConfig.seekPrecision)
+  state.seekbar.max = Math.ceil(duration / playerConfig.seekPrecision)
   state.seekbar.min = 0
   state.seekbar.value = 0
   state.progressRow.hidden = false
@@ -1001,7 +1003,7 @@ function resetProgress() {
 
 function updateProgress() {
   let t = state.player.getCurrentSeconds()
-  state.seekbar.value = Math.round(t / state.playerConfig.seekPrecision)
+  state.seekbar.value = Math.round(t / playerConfig.seekPrecision)
   state.progressNow.textContent = durationToString(t)
 }
 
@@ -1066,12 +1068,12 @@ function createVolumeBar(row) {
     '🔈 🔉 🔊',
     'Volume',
     v => {if (state.player) state.player.setVolumeGainMillibells(v)},
-    () => state.playerConfig.volume,
-    v => state.playerConfig.volume = v,
-    state.playerConfig.volumeMin,
-    state.playerConfig.volumeMax,
-    state.playerConfig.volumeStep,
-    state.playerConfig.volumePrecision,
+    () => playerConfig.volume,
+    v => playerConfig.volume = v,
+    playerConfig.volumeMin,
+    playerConfig.volumeMax,
+    playerConfig.volumeStep,
+    playerConfig.volumePrecision,
     'Minus,Equal,Backslash'
   )
 }
@@ -1082,12 +1084,12 @@ function createSpeedBar(row) {
     '🧊 🐌 🐢 🐇 🐎 ✈️ 🚀',
     'Playback speed',
     null,
-    () => Math.log2(state.playerConfig.speed),
-    v => state.playerConfig.speed = 2 ** v,
-    state.playerConfig.speedExpMin,
-    state.playerConfig.speedExpMax,
-    state.playerConfig.speedExpStep,
-    state.playerConfig.speedExpPrecision,
+    () => Math.log2(playerConfig.speed),
+    v => playerConfig.speed = 2 ** v,
+    playerConfig.speedExpMin,
+    playerConfig.speedExpMax,
+    playerConfig.speedExpStep,
+    playerConfig.speedExpPrecision,
     'ArrowDownAlt,ArrowUpAlt,SlashAlt'
   )
 }
@@ -1145,9 +1147,9 @@ function createRangeBar(row, iconSet, title, apply, getConfig, setConfig, min, m
 function createLoopCheckbox(parent) {
   createCheckbox(
     parent,
-    state.playerConfig.repeatCount == -1,
+    playerConfig.repeatCount == -1,
     v => {
-      state.playerConfig.repeatCount = -v
+      playerConfig.repeatCount = -v
       if (state.player) state.player.setRepeatCount(-v)
     },
     'Loop',
@@ -1158,9 +1160,9 @@ function createLoopCheckbox(parent) {
 function createSeqCheckbox(parent) {
   createCheckbox(
     parent,
-    !state.playerConfig.sequentially,
+    !playerConfig.sequentially,
     v => {
-      state.playerConfig.sequentially = !v
+      playerConfig.sequentially = !v
       if (!state.player || !state.queue.length) return
       smashQueue(1)
       enqNextIfNeeded(state.queue[state.queue.length - 1])
@@ -1230,7 +1232,7 @@ function createFilterSelect(parent) {
     select.value = localStorage['playgen:filter'] || 'none'
     select.addEventListener('change', () => {
       let filter = select.value
-      state.playerConfig.smoothing = filter == 'smooth' ? 80 : 0
+      playerConfig.smoothing = filter == 'smooth' ? 80 : 0
       localStorage['playgen:filter'] = filter
     })
   })
@@ -1244,10 +1246,10 @@ function createBufferSelect(parent) {
       opt.textContent = '\u2005' + bufferSize
     })
     select.title = 'Buffer size (how many sample points are generated and processed at once)'
-    select.value = state.playerConfig.bufferSize
+    select.value = playerConfig.bufferSize
     select.addEventListener('change', () => {
       let bufferSize = select.value
-      state.playerConfig.bufferSize = bufferSize
+      playerConfig.bufferSize = bufferSize
       if (state.player) state.player.recreate()
       localStorage['playgen:bufferSize'] = bufferSize
     })
@@ -1257,7 +1259,10 @@ function createBufferSelect(parent) {
 function createGraphButton(parent) {
   function resetGraph(useGraph) {
     let canv = getGraph(useGraph)
-    if (canv) canv.hidden = !useGraph
+    if (canv) {
+      canv.hidden = !useGraph
+      if (useGraph) canv.width = canv.width // clear canvas
+    }
   }
   makeElem(parent, 'button', button => {
     button.textContent = '📈'
@@ -1267,11 +1272,10 @@ function createGraphButton(parent) {
       'For smooth output, try smaller buffer size',
     ].join('\n')
     button.addEventListener('click', () => {
-      let useGraph = state.playerConfig.useGraph
+      let useGraph = playerConfig.useGraph
       useGraph = visualOutputs[visualOutputs.indexOf(useGraph) + 1] || null
       localStorage['playgen:visual'] = useGraph ? useGraph.id : 'none'
-      state.playerConfig.useGraph = useGraph
-      state.playerConfig.graphParams.clearCanvas = true
+      playerConfig.useGraph = useGraph
       resetGraph(useGraph)
     })
     state.keyDownListeners['BackslashShift'] = () => button.click()
@@ -1285,8 +1289,8 @@ function getGraph(useGraph) {
     if (!canv) {
       canv = makeElem(document.body, 'canvas', canv => {
         canv.id = 'oscilloscope'
-        canv.width = state.playerConfig.graphParams.w
-        canv.height = state.playerConfig.graphParams.h
+        canv.width = visConfig.w
+        canv.height = visConfig.h
       })
     }
   }
@@ -1301,7 +1305,7 @@ function drawGraphOffload(graphData, lowPriority = false) {
   }
   state.drawGraphPending = requestAnimationFrame(() => {
     state.drawGraphPending = null
-    let sliced = sliceGraphData(graphData, state.playerConfig.graphParams.samplesPerAnimFrame)
+    let sliced = sliceGraphData(graphData, visConfig.samplesPerAnimFrame)
     drawGraph(sliced.now)
     drawGraphOffload(sliced.later, true)
   })
@@ -1321,11 +1325,10 @@ function sliceGraphData(graphData, limit) {
 }
 
 function drawGraph(graphData) {
-  let useGraph = state.playerConfig.useGraph
+  let useGraph = playerConfig.useGraph
   if (!useGraph) return
-  let graphParams = state.playerConfig.graphParams
   let canv = getGraph(useGraph)
-  useGraph.f(canv, graphData, graphParams)
+  useGraph.f(canv, graphData, visConfig)
 }
 
 function drawWave(canv, graphData, graphParams) {
@@ -1340,7 +1343,7 @@ function drawWave(canv, graphData, graphParams) {
   c.lineWidth = graphParams.lineWidth
   for (let k in graphData.lines) {
     let l = graphData.lines[k]
-    let props = waveProps[k] || {color: '#ccc'}
+    let props = visConfig.waveProps[k] || {color: '#ccc'}
     c.beginPath()
     let scaleH = (props.oh || 0.5) * h
     for (let i = 0; i < l.length; ++i) {
@@ -1361,12 +1364,7 @@ function drawSpectrogram(canv, graphData, graphParams) {
   c.globalCompositeOperation = 'source-over'
   let spectralData = computeSpectrum(graphData, graphParams)
   let offset = spectralData.length
-  if (graphParams.clearCanvas) {
-    c.clearRect(0, 0, w, h)
-    graphParams.clearCanvas = false
-  } else {
-    c.drawImage(canv, -histogramPixelWidth * offset, 0)
-  }
+  c.drawImage(canv, -histogramPixelWidth * offset, 0)
   spectralData.forEach((spectralSample, j) => spectralSample.forEach((v, i) => {
     c.fillStyle = heatmapColor(Math.log(v))
     let n = spectralSample.length
@@ -1386,13 +1384,8 @@ function drawSpectrum(canv, graphData, graphParams) {
   let spectralData = computeSpectrum(graphData, graphParams)
   c.globalCompositeOperation = 'copy'
   let fall = graphParams.spectrumFallSpeed * spectralData.length
-  if (graphParams.clearCanvas) {
-    c.clearRect(0, 0, w, h)
-    graphParams.clearCanvas = false
-  } else {
-    c.drawImage(canv, 0, fall)
-    c.clearRect(0, 0, w, fall)
-  }
+  c.drawImage(canv, 0, fall)
+  c.clearRect(0, 0, w, fall)
   c.globalCompositeOperation = graphParams.spectrumCompositeOperation
   c.globalAlpha = graphParams.spectrumOpacity
   spectralData.forEach(spectralSample => {
@@ -1512,8 +1505,8 @@ function copyIdLink(q) {
   let id = q.id
   if (!id) return false
   let url = location.origin + location.pathname + '?id=' + id
-  if (state.playerConfig.repeatCount == -1) url += '&repeat'
-  if (state.playerConfig.speed != 1) url += '&speed=' + state.playerConfig.speed
+  if (playerConfig.repeatCount == -1) url += '&repeat'
+  if (playerConfig.speed != 1) url += '&speed=' + playerConfig.speed
   return copyToClipboard(url)
 }
 
@@ -1637,16 +1630,16 @@ function saveSession() {
   if (!state.player) return
   let q = state.queue[state.queueIndex]
   if (!q || !q.id || q.customMetadata) return
-  if (state.playerConfig.restoreOnRefreshOnlyIfPlaying && !isPlaying()) return
+  if (playerConfig.restoreOnRefreshOnlyIfPlaying && !isPlaying()) return
   localStorage['playgen:session'] = JSON.stringify({
     id: [q.id],
     t: state.player.getCurrentSeconds(),
-    speed: state.playerConfig.speed,
-    volume: state.playerConfig.volume,
+    speed: playerConfig.speed,
+    volume: playerConfig.volume,
     anim: state.anim.enabled,
     autoplay: isPlaying(),
     pl: state.sourceName == params.pl ? params.pl : null,
-    exp: Date.now() + state.playerConfig.restoreOnRefreshExpireMs,
+    exp: Date.now() + playerConfig.restoreOnRefreshExpireMs,
   })
 }
 
@@ -1793,9 +1786,7 @@ function category_to_color(x0, x2, x3) {
 
 // --- obligatory bubbles
 
-function createIntroBeepBlob() {
-  const durationSeconds = 5
-  const sampleRate = 44100
+function createIntroBeepBlob(durationSeconds = 5, sampleRate = 44100) {
   const numSamples = durationSeconds * sampleRate
   const buffer = new Int16Array(numSamples)
 
@@ -1829,7 +1820,7 @@ async function createFakeAudioToMakeMediaSessionWork() {
   audioElem.loop = true
   // but at least we can pause it
   // however on chromium pause events will be ignored then
-  audioElem.onplay = () => setTimeout(() => audioElem.pause(), state.playerConfig.bubbleIntroMs)
+  audioElem.onplay = () => setTimeout(() => audioElem.pause(), playerConfig.bubbleIntroMs)
   return audioElem.play()
 }
 
