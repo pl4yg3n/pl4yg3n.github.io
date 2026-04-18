@@ -208,7 +208,7 @@ const playerConfig = {
   restoreOnRefreshExpireMs: 3600000, // 1h
   restoreOnRefreshOnlyIfPlaying: false,
 
-  bubbleIntroMs: 1000,
+  bubbleIntroMs: 800,
   tickFactor: 1 / 3,
   maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
   useGraph: ((id) => visualOutputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || 'spectrum'),
@@ -467,6 +467,7 @@ function playQueueItem(q, playIndex) {
   setPlayingStyle(q)
   try {
     state.player.play(q.buffer, q.insn)
+    if (q.insn && q.insn.t) delete q.insn.t
     safely(() => displayMetadataDelayed(q))
     resetProgress()
     withElem('more-options', elem => elem.parentElement.hidden = false)
@@ -878,6 +879,13 @@ function createPauseButton(parent) {
         e.textContent = ['I>', 'II'][+isPlayingNow]
         e.title = ['Play', 'Pause'][+isPlayingNow] + ' [Space]'
         updateGraffitiAnim()
+        if (state.audioElem) {
+          if (isPlayingNow) {
+            state.audioElem.play()
+          } else {
+            state.audioElem.pause()
+          }
+        }
         safely(() => navigator.mediaSession.playbackState = isPlayingNow ? 'playing' : 'paused')
       }
       state.resetPause()
@@ -1804,9 +1812,9 @@ function category_to_color(x0, x2, x3) {
 
 // --- obligatory bubbles
 
-function createIntroBeepBlob(durationSeconds = 5, sampleRate = 44100) {
+function createIntroBeepBlob(durationSeconds = 4, sampleRate = 8000) {
   const numSamples = durationSeconds * sampleRate
-  const buffer = new Int16Array(numSamples)
+  const buffer = new Uint8Array(numSamples)
 
   let freqA = 250
   let freqB = 500
@@ -1820,10 +1828,10 @@ function createIntroBeepBlob(durationSeconds = 5, sampleRate = 44100) {
     phi += freq / sampleRate
     let bubble = 1 - (2*tt - 1)**6
     let v = Math.sin(phi * 2 * Math.PI) * vol * bubble
-    buffer[i] = Math.floor(v * 0x8000)
+    buffer[i] = Math.floor((v + 1) * 127.5)
   }
 
-  let header = atob('UklGRsy6BgBXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0Yai6BgA=')
+  let header = atob('UklGRiR9AABXQVZFZm10IBAAAAABAAEAgB8AAEAfAAABAAgAZGF0YQB9AAA=')
   header = Uint8Array.from(header.split('').map(x => x.charCodeAt(0)))
   return new Blob([header, buffer], {type: 'audio/wav'})
 }
@@ -1836,9 +1844,18 @@ async function createFakeAudioToMakeMediaSessionWork() {
   let blob = createIntroBeepBlob()
   audioElem.src = URL.createObjectURL(blob)
   audioElem.loop = true
-  // but at least we can pause it
-  // however on chromium pause events will be ignored then
-  audioElem.onplay = () => setTimeout(() => audioElem.pause(), playerConfig.bubbleIntroMs)
+  audioElem.onplay = () => {
+    state.audioElem = audioElem
+    setTimeout(
+      () => {
+        audioElem.volume = 0
+        audioElem.playbackRate = 0
+        audioElem.currentTime = 0
+        audioElem.onplay = null
+      },
+      playerConfig.bubbleIntroMs
+    )
+  }
   return audioElem.play()
 }
 

@@ -142,7 +142,6 @@ ChiptuneJsPlayer.prototype.play = function(buffer, insn = {}) {
   this.setVolumeGainMillibells(this.config.volume)
   if (insn.t) {
     this.setCurrentSeconds(insn.t)
-    delete insn.t
   } else if (insn.start) this.setCurrentSeconds(0)
   if (!this.currentPlayingNode.paused) this.currentPlayingNode.reconnect()
 }
