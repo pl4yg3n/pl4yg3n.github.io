@@ -345,6 +345,9 @@ sub {
 #supported-exts {
   font-style: italic;
 }
+.dynamic {
+  color: #0c0;
+}
 .side-logo {
   float: left;
   max-height: 8em;

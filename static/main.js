@@ -810,8 +810,7 @@ function ready() {
     updateGraffitiAnim()
   })
   // about: set dynamic values
-  withElem('base-count', e => e.textContent = playlists.accepted.length + (params.more ? ` (${playlists.playable.length})` : ''))
-  withElem('supported-exts', e => e.textContent = playableExts.join(', '))
+  fillDynamicAboutValues()
   // params.id: enqueue referenced music
   if (params.id) params.id.forEach(enqById)
   // about: make keybinds in help functional
@@ -835,6 +834,21 @@ function ready() {
     }
     playWhenReady()
   }
+}
+
+function fillDynamicAboutValues() {
+  setDynamicAbout('base-count', playlists.accepted.length + (params.more ? ` (${playlists.playable.length})` : ''))
+  setDynamicAbout('supported-exts', playableExts.join(', '))
+  let publishedAt = new Date(document.lastModified).toISOString()
+  setDynamicAbout('published-at', publishedAt.slice(0, 16).replace('T', ' ') + ' UTC', e => e.dateTime = publishedAt)
+}
+
+function setDynamicAbout(id, text, f) {
+  withElem(id, e => {
+    e.textContent = text
+    e.className = 'dynamic'
+    if (f) f(e)
+  })
 }
 
 // --- element utils
