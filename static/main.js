@@ -140,6 +140,9 @@ const visConfig = {
   // canvas
   w: 2048,
   h: 384,
+  wMin: 256,
+  wForScreen: 1000,
+  wForScreenUsePixelRatio: false,
   // spectral graphs
   histogramPixelWidth: 1,
   samplesPerAnimFrame: 1024,
@@ -179,7 +182,7 @@ const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'm
 // gmc, gtk, gt2, ult, unic, wow, xmf, gdm, mo3, oxm, umx, xpk, ppm, mmcmp
 
 const playerConfig = {
-  bufferSize: 1 << Math.min(Math.max(Math.log2(+params.buffer || localStorage['playgen:bufferSize']) || 12, 8), 14),
+  bufferSize: 1 << Math.min(Math.max(Math.log2(+params.buffer || localStorage['playgen:bufferSize']) || 10, 8), 14),
   smoothing: Math.abs(+params.smoothing || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
 
   // speed is a multiplier, but its changes are in log2 scale
@@ -1292,6 +1295,8 @@ function createGraphButton(parent) {
   state.resetGraph = resetGraph
 }
 
+// --- visualizations
+
 function getGraph(useGraph) {
   let canv = document.getElementById('oscilloscope')
   if (useGraph) {
@@ -1340,21 +1345,36 @@ function drawGraph(graphData) {
   useGraph.f(canv, graphData, visConfig)
 }
 
-function drawWave(canv, graphData, graphParams) {
+function prepareCanvas(canv, graphParams) {
   let w = graphParams.w
   let h = graphParams.h
-  let scaleW = w / graphData.length
+  let wScale = 1
+  if (graphParams.wForScreen) {
+    let screenW = window.innerWidth
+    if (graphParams.wForScreenUsePixelRatio) screenW *= window.devicePixelRatio
+    while (screenW < graphParams.wForScreen && w > graphParams.wMin) {
+      screenW *= 2
+      w /= 2
+      wScale /= 2
+    }
+  }
   if (canv.width != w) canv.width = w
   if (canv.height != h) canv.height = h
+  return {w, h, wScale}
+}
+
+function drawWave(canv, graphData, graphParams) {
+  let screen = prepareCanvas(canv, graphParams)
+  let scaleW = screen.w / graphData.length
   let c = canv.getContext('2d')
-  c.clearRect(0, 0, w, h)
+  c.clearRect(0, 0, screen.w, screen.h)
   c.globalCompositeOperation = 'screen'
   c.lineWidth = graphParams.lineWidth
   for (let k in graphData.lines) {
     let l = graphData.lines[k]
     let props = visConfig.lineProps[k] || {color: '#ccc'}
     c.beginPath()
-    let scaleH = (props.oh || 0.5) * h
+    let scaleH = (props.oh || 0.5) * screen.h
     for (let i = 0; i < l.length; ++i) {
       c.lineTo((i + 0.5) * scaleW, (1 - l[i]) * scaleH)
     }
@@ -1364,11 +1384,8 @@ function drawWave(canv, graphData, graphParams) {
 }
 
 function drawSpectrogram(canv, graphData, graphParams) {
-  let w = graphParams.w
-  let h = graphParams.h
+  let screen = prepareCanvas(canv, graphParams)
   let histogramPixelWidth = graphParams.histogramPixelWidth
-  if (canv.width != w) canv.width = w
-  if (canv.height != h) canv.height = h
   let c = canv.getContext('2d')
   c.globalCompositeOperation = 'source-over'
   let spectralData = computeSpectrum(graphData, graphParams)
@@ -1378,24 +1395,21 @@ function drawSpectrogram(canv, graphData, graphParams) {
     v = normalizeSpectralValue(v, graphParams)
     c.fillStyle = heatmapColor(v)
     let n = spectralSample.length
-    let y0 = Math.round((n - i - 1) / n * h)
-    let y1 = Math.round((n - i) / n * h)
-    c.fillRect(w - histogramPixelWidth * (offset - j), y0, histogramPixelWidth, y1 - y0)
+    let y0 = Math.round((n - i - 1) / n * screen.h)
+    let y1 = Math.round((n - i) / n * screen.h)
+    c.fillRect(screen.w - histogramPixelWidth * (offset - j), y0, histogramPixelWidth, y1 - y0)
   }))
 }
 
 function drawSpectrum(canv, graphData, graphParams) {
-  let w = graphParams.w
-  let h = graphParams.h
-  let scale = graphParams.spectrumBarRange
-  if (canv.width != w) canv.width = w
-  if (canv.height != h) canv.height = h
+  let screen = prepareCanvas(canv, graphParams)
+  let valueScale = graphParams.spectrumBarRange
   let c = canv.getContext('2d')
-  let spectralData = computeSpectrum(graphData, graphParams)
+  let spectralData = computeSpectrum(graphData, graphParams, screen.wScale)
   c.globalCompositeOperation = 'copy'
   let fall = graphParams.spectrumFallSpeed * spectralData.length
   c.drawImage(canv, 0, fall)
-  c.clearRect(0, 0, w, fall)
+  c.clearRect(0, 0, screen.w, fall)
   c.globalCompositeOperation = graphParams.spectrumCompositeOperation
   c.globalAlpha = graphParams.spectrumOpacity
   spectralData.forEach(spectralSample => {
@@ -1405,10 +1419,10 @@ function drawSpectrum(canv, graphData, graphParams) {
       v = normalizeSpectralValue(v, graphParams)
       c.fillStyle = heatmapColor(v)
       let n = spectralSample.length
-      let x0 = Math.round(i / n * w)
-      let x1 = Math.round((i + 1) / n * w)
-      let y = h / 2 * (1 - v / scale) + fall
-      if (y < h) c.fillRect(x0, y, x1 - x0, h - y)
+      let x0 = Math.round(i / n * screen.w)
+      let x1 = Math.round((i + 1) / n * screen.w)
+      let y = screen.h / 2 * (1 - v / valueScale) + fall
+      if (y < screen.h) c.fillRect(x0, y, x1 - x0, screen.h - y)
     })
   })
   c.globalAlpha = 1
@@ -1447,10 +1461,10 @@ function heatmapColor(v) { // for values mostly in [-5, 5]
   return `rgb(${r} ${g} ${b})`
 }
 
-function computeSpectrum(graphData, graphParams) {
+function computeSpectrum(graphData, graphParams, scale = 1) {
   let dataL = graphData.lines.l
   let dataR = graphData.lines.r
-  let n = graphParams.nOscillators
+  let n = Math.ceil(graphParams.nOscillators * scale)
   let freqStep = (graphParams.hzTo / graphParams.hzFrom) ** (1 / n)
   let sinTable = new Float32Array(n)
   let cosTable = new Float32Array(n)
