@@ -161,7 +161,7 @@ input[type="range"]::-moz-range-thumb {
   padding: 0 0.5em;
   margin: 0;
 }
-#oscilloscope {
+#visual-output {
   max-width: 90vw;
   background: rgba(0,0,0,0.5);
   border-radius: 0.7em;

@@ -143,9 +143,11 @@ const visConfig = {
   wMin: 256,
   wForScreen: 1000,
   wForScreenUsePixelRatio: false,
+  // offload
+  enableOffload: true,
+  maxSamplesPerAnimFrame: 1024,
   // spectral graphs
   histogramPixelWidth: 1,
-  samplesPerAnimFrame: 1024,
   spectralSampleSize: 1024,
   spectralNormMul: 1.2,
   spectralNormAdd: 0,
@@ -1283,40 +1285,42 @@ function createBufferSelect(parent) {
 }
 
 function createGraphButton(parent) {
-  function resetGraph(useGraph) {
-    let canv = getGraph(useGraph)
-    if (canv) {
-      canv.hidden = !useGraph
-      if (useGraph) canv.width = canv.width // clear canvas
-    }
-  }
   makeElem(parent, 'button', button => {
     button.textContent = '📈'
     button.title = [
-      'Toggle graph outputs [Shift \\]',
+      'Toggle visual outputs [Shift \\]',
       visualOutputs.map(g => '- ' + g.description).join('\n'),
       'For smooth output, try smaller buffer size',
     ].join('\n')
-    button.addEventListener('click', () => {
-      let useGraph = playerConfig.useGraph
-      useGraph = visualOutputs[visualOutputs.indexOf(useGraph) + 1] || null
-      localStorage['playgen:visual'] = useGraph ? useGraph.id : 'none'
-      playerConfig.useGraph = useGraph
-      resetGraph(useGraph)
-    })
-    state.keyDownListeners['BackslashShift'] = () => button.click()
+    button.addEventListener('click', toggleGraph)
+    state.keyDownListeners['BackslashShift'] = toggleGraph
   })
-  state.resetGraph = resetGraph
 }
 
 // --- visualizations
 
+function toggleGraph() {
+  let useGraph = playerConfig.useGraph
+  useGraph = visualOutputs[visualOutputs.indexOf(useGraph) + 1] || null
+  localStorage['playgen:visual'] = useGraph ? useGraph.id : 'none'
+  playerConfig.useGraph = useGraph
+  resetGraph(useGraph)
+}
+
+function resetGraph(useGraph) {
+  let canv = getGraph(useGraph)
+  if (canv) {
+    canv.hidden = !useGraph
+    if (useGraph) canv.width = canv.width // clear canvas
+  }
+}
+
 function getGraph(useGraph) {
-  let canv = document.getElementById('oscilloscope')
+  let canv = document.getElementById('visual-output')
   if (useGraph) {
     if (!canv) {
       canv = makeElem(document.body, 'canvas', canv => {
-        canv.id = 'oscilloscope'
+        canv.id = 'visual-output'
         canv.width = visConfig.w
         canv.height = visConfig.h
       })
@@ -1327,13 +1331,14 @@ function getGraph(useGraph) {
 
 function drawGraphOffload(graphData, lowPriority = false) {
   if (!graphData || !graphData.length) return
+  if (!visConfig.enableOffload) return drawGraph(graphData)
   if (state.drawGraphPending != null) {
     if (lowPriority) return
     cancelAnimationFrame(state.drawGraphPending)
   }
   state.drawGraphPending = requestAnimationFrame(() => {
     state.drawGraphPending = null
-    let sliced = sliceGraphData(graphData, visConfig.samplesPerAnimFrame)
+    let sliced = sliceGraphData(graphData, visConfig.maxSamplesPerAnimFrame)
     drawGraph(sliced.now)
     drawGraphOffload(sliced.later, true)
   })
@@ -1514,7 +1519,6 @@ function computeSpectrum(graphData, graphParams, scale = 1) {
     }
     results.push(x)
   }
-  if (!Number.isFinite(results[0][0]) || results[0][0] > 9000) console.log(results[0], graphData)
   return results
 }
 
