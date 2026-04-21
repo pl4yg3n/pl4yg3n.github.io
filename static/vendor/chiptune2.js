@@ -273,63 +273,34 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
           }
         } else {
           // apply smoothing to remove sharp noises
-          let sm = config.smoothing
-          let smX = config.smoothingX || 0.9
+          let sm = Math.exp(-config.smoothing / 25)
+          let smc = 1 - sm
 
           // setup value storage
           if (!processNode.vals) {
             processNode.vals = {
-              prevOutL: 0,
-              prevOutR: 0,
-              prevL0: 0,
-              prevR0: 0,
-              volAvg1L: 0,
-              volAvg1R: 0,
-              volAvg2L: 0,
-              volAvg2R: 0,
+              prevL: 0,
+              prevR: 0,
             }
           }
           let v = processNode.vals
+          if (!Number.isFinite(v.prevL)) v.prevL = 0
+          if (!Number.isFinite(v.prevR)) v.prevR = 0
           // setup line data dumping if needed
           if (config.useGraph) {
             lines = {
-              vol: new Float32Array(actualFramesPerChunk),
-              mav: new Float32Array(actualFramesPerChunk),
-              vsm: new Float32Array(actualFramesPerChunk),
-              smu: new Float32Array(actualFramesPerChunk),
-              outL: new Float32Array(actualFramesPerChunk),
-              outR: new Float32Array(actualFramesPerChunk),
-              l: new Float32Array(rawAudioLeft),
-              r: new Float32Array(rawAudioRight),
+              lIn: new Float32Array(rawAudioLeft),
+              rIn: new Float32Array(rawAudioRight),
+              l: new Float32Array(actualFramesPerChunk),
+              r: new Float32Array(actualFramesPerChunk),
             }
           }
           for (let i = 0; i < actualFramesPerChunk; ++i) {
-            // algorithm: for each channel
-            // volume = abs(raw[i] - raw[i-1])
-            // compute double exponential-window average of volume
-            // then dampen value to last output depending on that average volume
-            let currL0 = rawAudioLeft[i]
-            let currR0 = rawAudioRight[i]
-            let volL = Math.abs(currL0 - v.prevL0)
-            let volR = Math.abs(currR0 - v.prevR0)
-            v.volAvg1L = v.volAvg1L * smX + volL * (1 - smX)
-            v.volAvg1R = v.volAvg1R * smX + volR * (1 - smX)
-            v.volAvg2L = v.volAvg2L * smX + v.volAvg1L * (1 - smX)
-            v.volAvg2R = v.volAvg2R * smX + v.volAvg1R * (1 - smX)
-            let s0L = (1 / (1 + v.volAvg2L*sm)**2)
-            let s0R = (1 / (1 + v.volAvg2R*sm)**2)
-            outputL[framesRendered + i] = v.prevOutL = (rawAudioLeft[i] * s0L) + v.prevOutL * (1 - s0L)
-            outputR[framesRendered + i] = v.prevOutR = (rawAudioRight[i] * s0R) + v.prevOutR * (1 - s0R)
-            v.prevL0 = currL0
-            v.prevR0 = currR0
-            // dump line data if needed
+            outputL[framesRendered + i] = v.prevL = (rawAudioLeft[i] * sm) + v.prevL * smc
+            outputR[framesRendered + i] = v.prevR = (rawAudioRight[i] * sm) + v.prevR * smc
             if (lines) {
-              lines.outL[i] = v.prevOutL
-              lines.outR[i] = v.prevOutR
-              lines.mav[i] = v.volAvg1L
-              lines.vol[i] = volL
-              lines.vsm[i] = v.volAvg2L
-              lines.smu[i] = s0L
+              lines.l[i] = v.prevL
+              lines.r[i] = v.prevR
             }
           }
         }

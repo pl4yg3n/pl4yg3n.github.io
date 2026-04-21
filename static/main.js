@@ -161,15 +161,12 @@ const visConfig = {
   spectrumSmoothingIters: 2,
   // wave graph
   lineWidth: 2.5,
+  lineCompositeOperation: 'screen',
   lineProps: {
     l: {color: '#0af'},
     r: {color: '#f50'},
-    vol: {color: '#f00', oh: 1},
-    mav: {color: '#a00', oh: 1},
-    vsm: {color: '#0f0', oh: 1},
-    smu: {color: '#f0f', oh: 1},
-    outL: {color: '#05f'},
-    outR: {color: '#fa0'},
+    lIn: {color: '#05c', alpha: 0.5},
+    rIn: {color: '#a30', alpha: 0.5},
   },
 }
 
@@ -1387,11 +1384,12 @@ function drawWave(canv, graphData, graphParams) {
   let scaleW = screen.w / graphData.length
   let c = canv.getContext('2d')
   c.clearRect(0, 0, screen.w, screen.h)
-  c.globalCompositeOperation = 'screen'
-  c.lineWidth = graphParams.lineWidth
+  c.globalCompositeOperation = graphParams.lineCompositeOperation
   for (let k in graphData.lines) {
     let l = graphData.lines[k]
     let props = visConfig.lineProps[k] || {color: '#ccc'}
+    if (props.alpha != null) c.globalAlpha = props.alpha
+    c.lineWidth = props.size || graphParams.lineWidth
     c.beginPath()
     let scaleH = (props.oh || 0.5) * screen.h
     for (let i = 0; i < l.length; ++i) {
@@ -1399,6 +1397,7 @@ function drawWave(canv, graphData, graphParams) {
     }
     c.strokeStyle = props.color
     c.stroke()
+    if (props.alpha != null) c.globalAlpha = 1
   }
 }
 
