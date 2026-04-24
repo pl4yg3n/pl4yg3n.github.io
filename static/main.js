@@ -259,7 +259,7 @@ async function launchPlayer() {
   state.player = new ChiptuneJsPlayer(playerConfig)
   state.player.onEnded = playNext
   state.player.onTick = updateProgress
-  state.player.onData = drawGraphOffload
+  state.player.onProcess = processAudioOutput
 }
 
 // --- switching tracks
@@ -1294,6 +1294,41 @@ function createGraphButton(parent) {
   })
 }
 
+// --- audio processing
+
+function processAudioOutput(outputL, outputR, length, sampleRate) {
+  let doTransform = playerConfig.smoothing
+  let doDump = playerConfig.useGraph
+  let lines = doDump ? {
+    l: new Float32Array(outputL),
+    r: new Float32Array(outputR),
+  } : null
+  if (doTransform) {
+    transformAudioOutput(outputL, outputR, length, sampleRate, lines)
+    if (doDump) {
+      lines.lIn = lines.l
+      lines.rIn = lines.r
+      lines.l = new Float32Array(outputL)
+      lines.r = new Float32Array(outputR)
+    }
+  }
+  if (doDump) drawGraphOffload({lines, length, sampleRate})
+}
+
+function transformAudioOutput(outputL, outputR, length, sampleRate, lines) {
+  if (!state.processing) state.processing = {}
+  let v = state.processing
+  // apply smoothing
+  let sm = Math.exp(-playerConfig.smoothing / 25)
+  let smc = 1 - sm
+  if (!Number.isFinite(v.prevL)) v.prevL = 0
+  if (!Number.isFinite(v.prevR)) v.prevR = 0
+  for (let i = 0; i < length; ++i) {
+    outputL[i] = v.prevL = (outputL[i] * sm) + v.prevL * smc
+    outputR[i] = v.prevR = (outputR[i] * sm) + v.prevR * smc
+  }
+}
+
 // --- visualizations
 
 function toggleGraph() {
@@ -1862,8 +1897,7 @@ function createIntroBeepBlob(durationSeconds = 4, sampleRate = 8000) {
     buffer[i] = Math.floor((v + 1) * 127.5)
   }
 
-  let header = atob('UklGRiR9AABXQVZFZm10IBAAAAABAAEAgB8AAEAfAAABAAgAZGF0YQB9AAA=')
-  header = Uint8Array.from(header.split('').map(x => x.charCodeAt(0)))
+  const header = Uint8Array.fromBase64('UklGRiR9AABXQVZFZm10IBAAAAABAAEAgB8AAEAfAAABAAgAZGF0YQB9AAA=')
   return new Blob([header, buffer], {type: 'audio/wav'})
 }
 

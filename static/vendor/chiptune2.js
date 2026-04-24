@@ -12,7 +12,7 @@ ChiptuneJsPlayer.prototype.constructor = ChiptuneJsPlayer
 
 ChiptuneJsPlayer.prototype.onTick = () => {}
 ChiptuneJsPlayer.prototype.onEnded = () => {}
-ChiptuneJsPlayer.prototype.onData = () => {}
+ChiptuneJsPlayer.prototype.onProcess = () => {}
 
 // metadata
 ChiptuneJsPlayer.prototype.getCurrentRow = function() {
@@ -129,8 +129,6 @@ ChiptuneJsPlayer.prototype.metadata = function(additionalKeys) {
     data.header = m[0].trim()
   }
 
-  //console.log(data.title + '\n---\n' + data.message_raw + '\n---\n' + data.message_instruments + '\n---\n' + data.message_samples)
-  //console.log(data.title + '\n---\n' + data.message)
   return data
 }
 
@@ -169,14 +167,14 @@ ChiptuneJsPlayer.prototype.togglePause = function() {
 }
 
 ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn) {
-  let maxFramesPerChunk = config.maxFramesPerChunk || config.bufferSize || 4096
-  let processNode = this.context.createScriptProcessor(config.bufferSize || 2048, 0, 2)
+  let bufferSize = config.bufferSize || 2048
+  let processNode = this.context.createScriptProcessor(bufferSize, 0, 2)
   processNode.config = config
   processNode.insn = insn
   processNode.buffer = buffer
   processNode.player = this
   processNode.paused = !!insn.paused
-  let byteArray = new Int8Array(buffer)
+  let byteArray = new Uint8Array(buffer)
   let ptrToFile = libopenmpt._malloc(byteArray.byteLength)
   processNode.ptrToFile = ptrToFile
   HEAPU8.set(byteArray, ptrToFile)
@@ -186,8 +184,8 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
     throw 'Bad file or unsupported file format'
   }
 
-  processNode.leftBufferPtr  = libopenmpt._malloc(4 * maxFramesPerChunk)
-  processNode.rightBufferPtr = libopenmpt._malloc(4 * maxFramesPerChunk)
+  processNode.lBufferPtr = libopenmpt._malloc(bufferSize << 2)
+  processNode.rBufferPtr = libopenmpt._malloc(bufferSize << 2)
   processNode.cleanup = function() {
     if (this.modulePtr != 0) {
       libopenmpt._openmpt_module_destroy(this.modulePtr)
@@ -197,13 +195,13 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
       libopenmpt._free(this.ptrToFile)
       this.ptrToFile = 0
     }
-    if (this.leftBufferPtr != 0) {
-      libopenmpt._free(this.leftBufferPtr)
-      this.leftBufferPtr = 0
+    if (this.lBufferPtr != 0) {
+      libopenmpt._free(this.lBufferPtr)
+      this.lBufferPtr = 0
     }
-    if (this.rightBufferPtr != 0) {
-      libopenmpt._free(this.rightBufferPtr)
-      this.rightBufferPtr = 0
+    if (this.rBufferPtr != 0) {
+      libopenmpt._free(this.rBufferPtr)
+      this.rBufferPtr = 0
     }
     this.onaudioprocess = null
   }
@@ -233,95 +231,34 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
   processNode.onaudioprocess = function(e) {
     let outputL = e.outputBuffer.getChannelData(0)
     let outputR = e.outputBuffer.getChannelData(1)
-    if (this.modulePtr == 0) {
+    if (!this.modulePtr || this.paused) {
       outputL.fill(0)
       outputR.fill(0)
-      this.stop()
+      if (!this.modulePtr) this.stop()
       return
     }
-    if (this.paused) {
-      outputL.fill(0)
-      outputR.fill(0)
-      return
-    }
-    let framesRendered = 0
-    let ended = false
-    let framesToRender = outputL.length
-    let realSampleRate = this.context.sampleRate / (this.config.speed || 1)
-    if (this.insn.end && this.player.getCurrentSecondsRaw() > this.insn.end) {
-      ended = true
-    } else
-    while (framesToRender > 0) {
-      let framesPerChunk = Math.min(framesToRender, maxFramesPerChunk)
-      let actualFramesPerChunk = this.modulePtr && libopenmpt._openmpt_module_read_float_stereo(this.modulePtr, realSampleRate, framesPerChunk, this.leftBufferPtr, this.rightBufferPtr)
-      if (actualFramesPerChunk == 0) {
-        ended = true
+    let ended = !this.modulePtr || (this.insn.end && this.player.getCurrentSecondsRaw() > this.insn.end)
+    if (!ended) {
+      let distortedSampleRate = this.context.sampleRate / (this.config.speed || 1)
+      let framesRendered = this.modulePtr && libopenmpt._openmpt_module_read_float_stereo(
+        this.modulePtr, distortedSampleRate, bufferSize, this.lBufferPtr, this.rBufferPtr
+      )
+      if (framesRendered) {
+        outputL.set(HEAPF32.subarray(this.lBufferPtr >> 2, (this.lBufferPtr >> 2) + framesRendered))
+        outputR.set(HEAPF32.subarray(this.rBufferPtr >> 2, (this.rBufferPtr >> 2) + framesRendered))
+        processNode.player.onProcess(outputL, outputR, framesRendered, this.context.sampleRate)
       } else {
-        let rawAudioLeft = HEAPF32.subarray(this.leftBufferPtr / 4, this.leftBufferPtr / 4 + actualFramesPerChunk)
-        let rawAudioRight = HEAPF32.subarray(this.rightBufferPtr / 4, this.rightBufferPtr / 4 + actualFramesPerChunk)
-        let lines = null
-        if (!config.smoothing) {
-          // just copy raw data
-          outputL.set(rawAudioLeft, framesRendered)
-          outputR.set(rawAudioRight, framesRendered)
-          // dump line data if needed
-          if (config.useGraph) {
-            lines = {
-              l: new Float32Array(rawAudioLeft),
-              r: new Float32Array(rawAudioRight),
-            }
-          }
-        } else {
-          // apply smoothing to remove sharp noises
-          let sm = Math.exp(-config.smoothing / 25)
-          let smc = 1 - sm
-
-          // setup value storage
-          if (!processNode.vals) {
-            processNode.vals = {
-              prevL: 0,
-              prevR: 0,
-            }
-          }
-          let v = processNode.vals
-          if (!Number.isFinite(v.prevL)) v.prevL = 0
-          if (!Number.isFinite(v.prevR)) v.prevR = 0
-          // setup line data dumping if needed
-          if (config.useGraph) {
-            lines = {
-              lIn: new Float32Array(rawAudioLeft),
-              rIn: new Float32Array(rawAudioRight),
-              l: new Float32Array(actualFramesPerChunk),
-              r: new Float32Array(actualFramesPerChunk),
-            }
-          }
-          for (let i = 0; i < actualFramesPerChunk; ++i) {
-            outputL[framesRendered + i] = v.prevL = (rawAudioLeft[i] * sm) + v.prevL * smc
-            outputR[framesRendered + i] = v.prevR = (rawAudioRight[i] * sm) + v.prevR * smc
-            if (lines) {
-              lines.l[i] = v.prevL
-              lines.r[i] = v.prevR
-            }
-          }
-        }
-        // output line data to oscilloscope
-        if (lines && config.useGraph) this.player.onData({
-          lines,
-          length: actualFramesPerChunk,
-          sampleRate: this.context.sampleRate,
-        })
+        ended = true
       }
-      if (actualFramesPerChunk < framesPerChunk) {
-        outputL.fill(0, framesRendered + actualFramesPerChunk, framesRendered + framesPerChunk)
-        outputR.fill(0, framesRendered + actualFramesPerChunk, framesRendered + framesPerChunk)
+      if (framesRendered < bufferSize) {
+        outputL.fill(0, framesRendered, bufferSize)
+        outputR.fill(0, framesRendered, bufferSize)
       }
-      framesToRender -= framesPerChunk
-      framesRendered += framesPerChunk
     }
     if (ended) {
       let repeatCount = this.player.getRepeatCount()
-      if (repeatCount == -1) {
-        // force repeat if repeating endlessly
+      if (repeatCount) {
+        if (repeatCount > 0) this.player.setRepeatCount(repeatCount - 1)
         this.player.setCurrentSeconds(0)
       } else {
         this.stop()
