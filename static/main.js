@@ -259,7 +259,7 @@ async function launchPlayer() {
   await safely(createFakeAudioToMakeMediaSessionWork)
   state.player = new ChiptuneJsPlayer(playerConfig)
   state.player.onEnded = playNext
-  state.player.onTick = updateProgress
+  state.player.onTick = updateProgressOffload
   state.player.onProcess = processAudioOutput
 }
 
@@ -1027,10 +1027,19 @@ function resetProgress() {
   state.progressFull.textContent = durationToString(Math.round(duration))
 }
 
+function updateProgressOffload() {
+  if (state.tickPending != null) cancelAnimationFrame(state.tickPending)
+  state.tickPending = requestAnimationFrame(() => {
+    state.tickPending = null
+    updateProgress()
+  })
+}
+
 function updateProgress() {
   let t = state.player.getCurrentSeconds()
   state.seekbar.value = Math.round(t / playerConfig.seekPrecision)
-  state.progressNow.textContent = durationToString(t)
+  let timeNow = durationToString(t)
+  if (state.progressNow.textContent != timeNow) state.progressNow.textContent = timeNow
 }
 
 function createModeSelect(parent) {
