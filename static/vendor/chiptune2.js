@@ -145,6 +145,7 @@ ChiptuneJsPlayer.prototype.play = function(buffer, insn = {}) {
 }
 
 ChiptuneJsPlayer.prototype.recreate = function() {
+  if (this.currentPlayingNode == null) return
   let buffer = this.currentPlayingNode.buffer
   let insn = this.currentPlayingNode.insn
   insn.t = this.getCurrentSeconds()
@@ -153,11 +154,9 @@ ChiptuneJsPlayer.prototype.recreate = function() {
 }
 
 ChiptuneJsPlayer.prototype.stop = function() {
-  if (this.currentPlayingNode != null) {
-    this.currentPlayingNode.disconnect()
-    this.currentPlayingNode.cleanup()
-    this.currentPlayingNode = null
-  }
+  if (this.currentPlayingNode == null) return
+  this.currentPlayingNode.stop()
+  this.currentPlayingNode = null
 }
 
 ChiptuneJsPlayer.prototype.togglePause = function() {
