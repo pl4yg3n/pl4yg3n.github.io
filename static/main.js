@@ -182,7 +182,7 @@ const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'm
 // gmc, gtk, gt2, ult, unic, wow, xmf, gdm, mo3, oxm, umx, xpk, ppm, mmcmp
 
 const playerConfig = {
-  bufferSize: 1 << Math.min(Math.max(Math.log2(+params.buffer || localStorage['playgen:bufferSize']) || 10, 8), 14),
+  bufferSize: 1 << Math.min(Math.max(Math.log2(+params.buffer || localStorage['playgen:bufferSize']) || 12, 8), 14),
   smoothing: Math.abs(+params.smoothing || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
 
   // speed is a multiplier, but its changes are in log2 scale
@@ -1369,11 +1369,18 @@ function drawGraphOffload(graphData, lowPriority = false) {
     if (lowPriority) return
     cancelAnimationFrame(state.drawGraphPending)
   }
-  state.drawGraphPending = requestAnimationFrame(() => {
+  state.drawGraphPending = requestAnimationFrame(t => {
     state.drawGraphPending = null
+    if (graphData.tNext != null && t < graphData.tNext) {
+      return drawGraphOffload(graphData, true)
+    }
     let sliced = sliceGraphData(graphData, visConfig.maxSamplesPerAnimFrame)
     drawGraph(sliced.now)
-    drawGraphOffload(sliced.later, true)
+    if (!sliced.later || !sliced.later.length) return
+    let itersLeft = sliced.later.length / visConfig.maxSamplesPerAnimFrame
+    let animMsLeft = 1000 * sliced.later.length / sliced.later.sampleRate
+    sliced.later.tNext = (graphData.tNext || t) + animMsLeft / itersLeft
+    return drawGraphOffload(sliced.later, true)
   })
 }
 
