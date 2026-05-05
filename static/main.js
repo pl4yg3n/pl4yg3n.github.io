@@ -147,6 +147,7 @@ const visConfig = {
   enableOffload: true,
   maxSamplesPerAnimFrame: 1024,
   // spectral graphs
+  heatmapColorScheme: 'rgbe2',
   histogramPixelWidth: 1,
   spectralSampleSize: 1024,
   spectralNormMul: 1.2,
@@ -155,7 +156,7 @@ const visConfig = {
   hzFrom: 100,
   hzTo: 25600,
   spectrumBarRange: 6,
-  spectrumFallSpeed: 2,
+  spectrumFallSpeed: 3,
   spectrumOpacity: 0.2,
   spectrumCompositeOperation: 'destination-over',
   spectrumSmoothingIters: 2,
@@ -1393,6 +1394,7 @@ function drawGraph(graphData) {
   let useGraph = playerConfig.useGraph
   if (!useGraph) return
   let canv = getGraph(useGraph)
+  if (visConfig.debugColors) return drawDebug(canv, visConfig)
   useGraph.f(canv, graphData, visConfig)
 }
 
@@ -1446,7 +1448,7 @@ function drawSpectrogram(canv, graphData, graphParams) {
   c.drawImage(canv, -histogramPixelWidth * offset, 0)
   spectralData.forEach((spectralSample, j) => spectralSample.forEach((v, i) => {
     v = normalizeSpectralValue(v, graphParams)
-    c.fillStyle = heatmapColor(v)
+    c.fillStyle = heatmapColor(v, graphParams)
     let n = spectralSample.length
     let y0 = Math.round((n - i - 1) / n * screen.h)
     let y1 = Math.round((n - i) / n * screen.h)
@@ -1468,10 +1470,10 @@ function drawSpectrum(canv, graphData, graphParams) {
   spectralData.forEach(spectralSample => {
     fall -= graphParams.spectrumFallSpeed
     spectralSample = smoothArray(spectralSample, graphParams.spectrumSmoothingIters, true)
+    let n = spectralSample.length
     spectralSample.forEach((v, i) => {
       v = normalizeSpectralValue(v, graphParams)
-      c.fillStyle = heatmapColor(v)
-      let n = spectralSample.length
+      c.fillStyle = heatmapColor(v, graphParams)
       let x0 = Math.round(i / n * screen.w)
       let x1 = Math.round((i + 1) / n * screen.w)
       let y = screen.h / 2 * (1 - v / valueScale) + fall
@@ -1503,15 +1505,93 @@ function smoothArray(arr, nIters = 1, mostlyTail = false) {
   return arrNew
 }
 
+function drawDebug(canv, graphParams) {
+  let screen = prepareCanvas(canv, graphParams)
+  let c = canv.getContext('2d')
+  c.clearRect(0, 0, screen.w, screen.h)
+  c.globalCompositeOperation = 'source-over'
+  let n = Math.ceil(screen.w / 8)
+  let heatmapNames = 'hsl0,hsl1,hsl2,rgb0,rgb1,rgb2,rgb3,rgbe1,rgbe2,green'.split(',')
+  let nHeatmaps = heatmapNames.length
+  for (let j = 0; j < nHeatmaps; j++) {
+    let y0 = Math.round(j / nHeatmaps * screen.h)
+    let y1 = Math.round((j + 1) / nHeatmaps * screen.h)
+    for (let i = 0; i < n; i++) {
+      let v = ((i / n) * 2 - 1) * graphParams.spectrumBarRange
+      c.fillStyle = heatmapColor(v, {heatmapColorScheme: heatmapNames[j]})
+      let x0 = Math.round(i / n * screen.w)
+      let x1 = Math.round((i + 1) / n * screen.w)
+      c.fillRect(x0, y0, x1 - x0, y1 - y0)
+    }
+    c.strokeStyle = '#ccc'
+    c.strokeText(heatmapNames[j], 8, (y0 + y1)/2)
+  }
+}
+
 function normalizeSpectralValue(v, graphParams) {
   return graphParams.spectralNormMul * Math.log(v) + graphParams.spectralNormAdd
 }
 
-function heatmapColor(v) { // for values mostly in [-5, 5]
-  let r = Math.round(v > 2 ? 255 : 255/(((v-2)**2)/3+1) + 32/(((v+2.5)**2)/3+1))||0
-  let g = Math.round(v > 7 ? 255 : 255/(((v-0.5)**2)/2.5+1) + 255/(((v-7)**2)+1))||0
-  let b = Math.round(v > 5 ? 255 : 255/(((v+1.5)**2)/2+1) + 255/(((v-5.5)**2)+1))||0
-  return `rgb(${r} ${g} ${b})`
+function heatmapColor(v, graphParams) { // for values mostly in [-5, 5]
+  switch (graphParams.heatmapColorScheme) {
+    case 'hsl0': {
+      let l = 0.6 * (0.5 + v/12) + 0.4 * (0.5 + v/12) ** 12
+      let s = 1 - (0.5 - Math.min(v/12,0.5)) ** 2
+      let h = 0.5 - v/9
+      return `hsl(${h}turn ${s*100}% ${l*100}%)`
+    }
+    case 'hsl1': {
+      let l = 0.6 * (0.5 + v/12) + 0.4 * (0.5 + v/12) ** 12
+      let s = 1 - (0.5 - Math.min(v/12,0.5)) ** 2
+      let h = 0.4 - v/9
+      return `hsl(${h}turn ${s*100}% ${l*100}%)`
+    }
+    case 'hsl2': {
+      let l = 0.6 * (0.5 + v/12) + 0.4 * (0.5 + v/12) ** 12
+      let s = 1 - (0.5 - Math.min(v/12,0.5)) ** 2
+      let h = 0.35 - v/9
+      return `hsl(${h}turn ${s*100}% ${l*100}%)`
+    }
+    case 'rgb0': {
+      let r = Math.round(v > 2 ? 255 : 255/(((v-2)**2)/3+1) + 32/(((v+2.5)**2)/3+1))||0
+      let g = Math.round(v > 7 ? 255 : 255/(((v-0.5)**2)/2.5+1) + 255/(((v-7)**2)+1))||0
+      let b = Math.round(v > 5 ? 255 : 255/(((v+1.5)**2)/2+1) + 255/(((v-5)**2)+1))||0
+      return `rgb(${r} ${g} ${b})`
+    }
+    case 'rgb1': {
+      let r = Math.round(v > 2.0 ? 255 : 255/(((v-2.0)**2)/3.0+1) + 32 /(((v+2.5)**2)/3+1))||0
+      let g = Math.round(v > 7.0 ? 255 : 255/(((v-0.5)**2)/2.5+1) + 255/(((v-7.0)**2)+1))||0
+      let b = Math.round(v > 5.5 ? 255 : 255/(((v+1.5)**2)/2.0+1) + 255/(((v-5.5)**2)+1))||0
+      return `rgb(${r} ${g} ${b})`
+    }
+    case 'rgb2': {
+      let r = Math.round(v > 3.0 ? 255 : 255/(((v-3.0)**4)/8+1) + 32 /(((v+2.5)**4)/8+1))||0
+      let g = Math.round(v > 7.5 ? 255 : 255/(((v-0.5)**4)/9+1) + 255/(((v-7.5)**4)/8+1))||0
+      let b = Math.round(v > 6.0 ? 255 : 255/(((v+1.5)**4)/8+1) + 255/(((v-6.0)**4)/8+1))||0
+      return `rgb(${r} ${g} ${b})`
+    }
+    case 'rgb3': {
+      let r = Math.round(v > 2.7 ? 255 : 255/(((v-2.7)**4)/8+1) + 32 /(((v+2.5)**4)/8+1))||0
+      let g = Math.round(v > 7.5 ? 255 : 224/(((v-0.5)**4)/9+1) + 255/(((v-7.5)**4)/8+1))||0
+      let b = Math.round(v > 6.0 ? 255 : 128/(((v+1.5)**4)/8+1) + 255/(((v-6.0)**4)/8+1))||0
+      return `rgb(${r} ${g} ${b})`
+    }
+    case 'rgbe1': {
+      let r = Math.round(v > 2.5 ? 255 : 255*Math.exp(-((v-2.5)**2)/4) + 32 /(((v+2.5)**4)/8+1))||0
+      let g = Math.round(v > 7.5 ? 255 : 224*Math.exp(-((v-0.5)**2)/5) + 255/(((v-7.5)**4)/8+1))||0
+      let b = Math.round(v > 6.0 ? 255 : 128*Math.exp(-((v+1.5)**2)/4) + 255/(((v-6.0)**4)/8+1))||0
+      return `rgb(${r} ${g} ${b})`
+    }
+    case 'rgbe2': {
+      let r = Math.round(v > 2.5 ? 255 : 255*Math.exp(-((v-2.5)**2)/4) + 32/(((v+2.5)**4)/8+1))||0
+      let g = Math.round(v > 7.5 ? 255 : 170*Math.exp(-((v-0.5)**2)/6) + 75*Math.exp(-((v-1.7)**2)/1.5) + 255/(((v-7.5)**4)/10+1))||0
+      let b = Math.round(v > 6.0 ? 255 : 120*Math.exp(-((v+1.5)**2)/4) + 255/(((v-6.0)**4)/8+1))||0
+      return `rgb(${r} ${g} ${b})`
+    }
+    default: {
+      return `rgb(0 ${Math.max(0, Math.min(Math.round(255 * (0.5 + v/12)), 255))} 0)`
+    }
+  }
 }
 
 function computeSpectrum(graphData, graphParams, scale = 1) {
