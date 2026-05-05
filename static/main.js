@@ -1,12 +1,13 @@
 ﻿'use strict'
 const libopenmpt = {}
 
-const params = safely(parseUrlParams, {})
-safely(initSession)
+const params = safely(parseUrlParams, {}) // input parameters
+safely(initSession) // try restoring last values of some parameters
+const conf = {} // root config for all used parameters
 
 // --- playing program config
 
-const modes = [
+conf.modes = [
   {name: '📀 Auto', p: '@auto', title: 'Automatically selects playlist depending on time of the day'},
   {name: '⭐ Favorite', p: '!favorites', title: 'Your favorite tracks (this playlist is stored on your device)', hidden: 2},
   {name: '🎲 All', p: 'accepted', title: 'Random music from full hand-picked collection'},
@@ -53,7 +54,8 @@ const modes = [
 
   {name: '🛠️ Custom', p: 'custom', title: 'Custom playlist', hidden: 2}
 ]
-const hourlyProgram = [
+conf.program = {}
+conf.program.hourly = [
   /* 00: */ 'night_4',
   /* 01: */ 'night_5',
   /* 02: */ 'night_5',
@@ -79,7 +81,7 @@ const hourlyProgram = [
   /* 22: */ 'night_2',
   /* 23: */ 'night_3',
 ]
-const weekdayProgramEvent = [
+conf.program.weekdayEvent = [
   /* SUN */ 'group_cozy',
   /* MON */ 'group_agglike',
   /* TUE */ ':flight',
@@ -88,10 +90,10 @@ const weekdayProgramEvent = [
   /* FRI */ 'group_party',
   /* SAT */ 'group_shiny',
 ]
-const holidayProgramFull = {
+conf.program.holidayFull = {
   '04-12': ':cosm',
 }
-const holidayProgramEvent = {
+conf.program.holidayEvent = {
   '10-30': 'group_pumpkin',
   '10-31': 'group_pumpkin',
   '12-25': ':xmas',
@@ -99,7 +101,7 @@ const holidayProgramEvent = {
   '01-01': ':xmas',
 }
 
-const playlistAlias = {
+conf.playlistAlias = {
   day: 'c:0123',
   day_good: 'c:123',
   day_gold: 'c:23',
@@ -130,13 +132,12 @@ const playlistAlias = {
 
 // --- visual output config
 
-const visualOutputs = [
-  {id: 'spectrum', f: drawSpectrum, description: 'Spectrum wave: equalizer-style spectrum of frequencies'},
-  {id: 'spectrogram', f: drawSpectrogram, description: 'Spectrogram: histogram for a spectrum of frequencies'},
-  {id: 'soundwave', f: drawWave, description: 'Sound wave: raw lines for stereo (left - blue, right - orange)'},
-]
-
-const visConfig = {
+conf.vis = {
+  outputs: [
+    {id: 'spectrum', f: drawSpectrum, description: 'Spectrum wave: equalizer-style spectrum of frequencies'},
+    {id: 'spectrogram', f: drawSpectrogram, description: 'Spectrogram: histogram for a spectrum of frequencies'},
+    {id: 'soundwave', f: drawWave, description: 'Sound wave: raw lines for stereo (left - blue, right - orange)'},
+  ],
   // canvas
   w: 2048,
   h: 384,
@@ -171,9 +172,20 @@ const visConfig = {
   },
 }
 
+conf.graffiti = {
+  text: {
+    loading: 'Loading',
+    ok: 'Playgen',
+    error: '[error]',
+  },
+  anim: {
+    enabled: !!params.anim,
+  }
+}
+
 // --- player config
 
-const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'mptm', 'mt2', 'stm'] // openmpt can play only those
+conf.playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'mptm', 'mt2', 'stm'] // openmpt can play only those
 // Well, actually...
 // Formats supported by https://lib.openmpt.org/libopenmpt/2025/05/31/release-0.8.0/:
 // mptm, mod, s3m, xm, it, 667, 669, amf, ams, c67, cba, dbm, digi, dmf, dsm, dsym, dtm,
@@ -181,7 +193,7 @@ const playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'm
 // nst, okt, plm, psm, pt36, ptm, puma, rtm, sfx, sfx2, smod, st26, stk, stm, stx, stp, symmod,
 // gmc, gtk, gt2, ult, unic, wow, xmf, gdm, mo3, oxm, umx, xpk, ppm, mmcmp
 
-const playerConfig = {
+conf.play = {
   bufferSize: 1 << Math.min(Math.max(Math.log2(+params.buffer || localStorage['playgen:bufferSize']) || 12, 8), 14),
   smoothing: Math.abs(+params.smoothing || (localStorage['playgen:filter'] == 'smooth' ? 80 : 0) || 0),
 
@@ -214,10 +226,15 @@ const playerConfig = {
   bubbleIntroMs: 800,
   tickFactor: 1 / 3,
   maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
-  useGraph: ((id) => visualOutputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || 'spectrum'),
+  useGraph: ((id) => conf.vis.outputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || 'spectrum'),
+
+  // callbacks
+  onEnded: playNext,
+  onTick: updateProgressOffload,
+  onProcess: processAudioOutput,
 }
 
-const urlConfig = {
+conf.urls = {
   collectionUrlRoot: location.hostname.match(/localhost|\d+(\.\d+){3}/) ? './collection/'
     : 'https://raw.githubusercontent.com/pl4yg3n/collection/refs/heads/main/',
   indexPathLocal: 'index.csv',
@@ -234,7 +251,6 @@ const state = {
   playIndex: -1, // sequential id to prevent possible problems in case of concurrent loading
   source: null, // playlist/function to take next tracks from
   anim: { // graffiti animation
-    enabled: !!params.anim,
     state: false,
     timer: null,
   },
@@ -245,6 +261,7 @@ const state = {
     return favString ? JSON.parse(favString) : []
   }, []),
 }
+safely(loadConfOverrides) // try overriding config with custom values
 
 function safely(f, fallback) {
   try { return f() } catch(err) {
@@ -257,10 +274,7 @@ function safely(f, fallback) {
 
 async function launchPlayer() {
   await safely(createFakeAudioToMakeMediaSessionWork)
-  state.player = new ChiptuneJsPlayer(playerConfig)
-  state.player.onEnded = playNext
-  state.player.onTick = updateProgressOffload
-  state.player.onProcess = processAudioOutput
+  state.player = new ChiptuneJsPlayer(conf.play)
 }
 
 // --- switching tracks
@@ -321,7 +335,7 @@ async function enqNext(hint) {
 
 function pick(arr, hint) {
   if (arr.length == 0) throw 'Cannot pick from empty array!'
-  if (playerConfig.sequentially) {
+  if (conf.play.sequentially) {
     if (hint && hint.e) {
       let index = arr.indexOf(hint.e) + 1
       if (index == arr.length) {
@@ -355,10 +369,10 @@ async function enqUrl(url, color='#999', solid=2) {
 async function enqMa(id, solid=2) {
   id = +id
   if (!id) {
-    id = Math.floor(Math.random() * urlConfig.modArchiveMaxId) + 1
+    id = Math.floor(Math.random() * conf.urls.modArchiveMaxId) + 1
   }
   return addToQueue({
-    src: urlConfig.musicUrlModArchive + id,
+    src: conf.urls.musicUrlModArchive + id,
     color: '#99a8a8',
     id: 'ma:' + id,
     idMa: id,
@@ -376,14 +390,14 @@ function getTimeParamOnce() {
 async function enqEntry(e, solid=1, customMetadata) {
   return addToQueue({
     e,
-    src: urlConfig.collectionUrlRoot + urlConfig.musicPathLocal + e.path.replaceAll('%', '%25').replaceAll('#', '%23'),
+    src: conf.urls.collectionUrlRoot + conf.urls.musicPathLocal + e.path.replaceAll('%', '%25').replaceAll('#', '%23'),
     color: category_to_color(e.c, e.q, e.m),
     insn: {
       start: e.tags['t:start'],
       t: getTimeParamOnce(),
       end: e.tags['t:end'],
       repeat: e.tags['repeat'],
-      gainMillibells: (e.tags['d:lvol'] || 0) * playerConfig.volumeAddForLowVolumeTracks,
+      gainMillibells: (e.tags['d:lvol'] || 0) * conf.play.volumeAddForLowVolumeTracks,
     },
     id: e.md5.slice(0, 10),
     idMa: +e.tags['id:ma'] || +e.tags['id:dup:ma'] || null,
@@ -491,7 +505,7 @@ function unlistQueueItem(q) {
 }
 
 function trimQueueHistory() {
-  let removeTo = state.queueIndex - playerConfig.maxQueueHistorySize
+  let removeTo = state.queueIndex - conf.play.maxQueueHistorySize
   if (removeTo <= 0) return false
   return dropQueueChunk(0, removeTo)
 }
@@ -543,7 +557,7 @@ async function displayMetadata(q, data) {
   let idMa = q.idMa
   withElem('output-id-ma', e => {
     e.textContent = idMa ? 'ModArchive id: ' + idMa : ''
-    e.href = idMa ? urlConfig.pageUrlModArchive + idMa : ''
+    e.href = idMa ? conf.urls.pageUrlModArchive + idMa : ''
   })
   withElem('output-title', e => e.textContent = data.title)
   withElem('output-lore', e => e.textContent = data.message)
@@ -640,7 +654,7 @@ window.ondrop = e => {
 // --- init index and playlists
 
 async function loadIndex() {
-  await fetch(urlConfig.collectionUrlRoot + urlConfig.indexPathLocal)
+  await fetch(conf.urls.collectionUrlRoot + conf.urls.indexPathLocal)
     .then(x => x.text())
     .then(parseIndex)
     .then(generatePlaylists)
@@ -682,7 +696,7 @@ function parseIndex(fileContents) {
 let playlists = {}
 function generatePlaylists(index) {
   playlists.full = index
-  playlists.playable = index.filter(e => playableExts.includes(e.ext))
+  playlists.playable = index.filter(e => conf.playableExts.includes(e.ext))
   playlists.accepted = playlists.playable.filter(e => '0123mn'.includes(e.c))
   // all other playlists are generated lazily
 }
@@ -748,9 +762,9 @@ function selectSourceByName(name) {
     month = (month < 10 ? '0' : '') + month
     day = (day < 10 ? '0' : '') + day
     let yearDay = month + '-' + day
-    name = holidayProgramFull[yearDay] || hourlyProgram[hour]
+    name = conf.program.holidayFull[yearDay] || conf.program.hourly[hour]
     if (name == '@event') {
-      name = holidayProgramEvent[yearDay] || weekdayProgramEvent[weekday]
+      name = conf.program.holidayEvent[yearDay] || conf.program.weekdayEvent[weekday]
     }
     let toNextHour = 3600500 - Date.now() % 3600000
     state.hourlyRefresh = setTimeout(() => selectPlaylist(controlName), toNextHour)
@@ -770,9 +784,7 @@ function selectSourceByName(name) {
   // define lazy playlist function
   if (!playlists[name]) {
     let code = name
-    if (playlistAlias[code]) {
-      code = playlistAlias[code]
-    }
+    code = conf.playlistAlias[code] || code
     let base = playlists.accepted
     if (code.startsWith('*')) {
       base = playlists.playable
@@ -806,7 +818,7 @@ function ready() {
       state.resetPause()
       return
     }
-    state.anim.enabled = !state.anim.enabled
+    conf.graffiti.anim.enabled = !conf.graffiti.anim.enabled
     updateGraffitiAnim()
   })
   // about: set dynamic values
@@ -825,7 +837,7 @@ function ready() {
     elem.role = 'button'
   })
   // params.autoplay: launch if possible
-  if (playerConfig.autoplay) {
+  if (conf.play.autoplay) {
     // Wasm doesn't load in order so need to wait until it loads and only then start
     // todo: ensure it in launchPlayer
     function playWhenReady() {
@@ -838,7 +850,7 @@ function ready() {
 
 function fillDynamicAboutValues() {
   setDynamicAbout('base-count', playlists.accepted.length + (params.more ? ` (${playlists.playable.length})` : ''))
-  setDynamicAbout('supported-exts', playableExts.join(', '))
+  setDynamicAbout('supported-exts', conf.playableExts.join(', '))
   let publishedAt = new Date(document.lastModified).toISOString()
   setDynamicAbout('published-at', publishedAt.slice(0, 16).replace('T', ' ') + ' UTC', e => e.dateTime = publishedAt)
 }
@@ -969,9 +981,9 @@ function assignSeekKeybinds() {
     if (!state.player || !state.player.currentPlayingNode) return
     state.player.setCurrentSeconds(f())
   }
-  setSeekKeybind('ArrowRightAlt', () => state.player.getCurrentSeconds() + playerConfig.rewindStepSeconds)
-  setSeekKeybind('ArrowLeftAlt', () => state.player.getCurrentSeconds() - playerConfig.rewindStepSeconds)
-  setSeekKeybind('ArrowRightShift', () => state.player.getTotalSeconds() - playerConfig.rewindTailSeconds)
+  setSeekKeybind('ArrowRightAlt', () => state.player.getCurrentSeconds() + conf.play.rewindStepSeconds)
+  setSeekKeybind('ArrowLeftAlt', () => state.player.getCurrentSeconds() - conf.play.rewindStepSeconds)
+  setSeekKeybind('ArrowRightShift', () => state.player.getTotalSeconds() - conf.play.rewindTailSeconds)
   setSeekKeybind('ArrowLeftShift', () => 0)
 }
 
@@ -984,7 +996,7 @@ function createSeekBar(row) {
     state.seekbar = bar
     bar.oninput = () => {
       if (!state.player) return
-      let t = bar.value * playerConfig.seekPrecision
+      let t = bar.value * conf.play.seekPrecision
       state.player.setCurrentSeconds(t)
     }
   })
@@ -1019,7 +1031,7 @@ function durationToString(t) {
 
 function resetProgress() {
   let duration = state.player.getTotalSeconds()
-  state.seekbar.max = Math.ceil(duration / playerConfig.seekPrecision)
+  state.seekbar.max = Math.ceil(duration / conf.play.seekPrecision)
   state.seekbar.min = 0
   state.seekbar.value = 0
   state.progressRow.hidden = false
@@ -1037,14 +1049,14 @@ function updateProgressOffload() {
 
 function updateProgress() {
   let t = state.player.getCurrentSeconds()
-  state.seekbar.value = Math.round(t / playerConfig.seekPrecision)
+  state.seekbar.value = Math.round(t / conf.play.seekPrecision)
   let timeNow = durationToString(t)
   if (state.progressNow.textContent != timeNow) state.progressNow.textContent = timeNow
 }
 
 function createModeSelect(parent) {
   makeElem(parent, 'select', select => {
-    for (let mode of modes) makeElem(select, 'option', opt => {
+    for (let mode of conf.modes) makeElem(select, 'option', opt => {
       opt.value = mode.p
       // prepend tiny space or else emoji's left side gets cut
       opt.textContent = '\u2005' + mode.name
@@ -1062,7 +1074,7 @@ function createModeSelect(parent) {
     if (urlPlaylistModeParam) {
       try {
         selectPlaylist(urlPlaylistModeParam)
-        select.value = modes.find(x => x.p == urlPlaylistModeParam) ? urlPlaylistModeParam : 'custom'
+        select.value = conf.modes.find(x => x.p == urlPlaylistModeParam) ? urlPlaylistModeParam : 'custom'
         return
       } catch (err) {
         console.error(err)
@@ -1103,12 +1115,12 @@ function createVolumeBar(row) {
     '🔈 🔉 🔊',
     'Volume',
     v => {if (state.player) state.player.setVolumeGainMillibells(v)},
-    () => playerConfig.volume,
-    v => playerConfig.volume = v,
-    playerConfig.volumeMin,
-    playerConfig.volumeMax,
-    playerConfig.volumeStep,
-    playerConfig.volumePrecision,
+    () => conf.play.volume,
+    v => conf.play.volume = v,
+    conf.play.volumeMin,
+    conf.play.volumeMax,
+    conf.play.volumeStep,
+    conf.play.volumePrecision,
     'Minus,Equal,Backslash'
   )
 }
@@ -1119,12 +1131,12 @@ function createSpeedBar(row) {
     '🧊 🐌 🐢 🐇 🐎 ✈️ 🚀',
     'Playback speed',
     null,
-    () => Math.log2(playerConfig.speed),
-    v => playerConfig.speed = 2 ** v,
-    playerConfig.speedExpMin,
-    playerConfig.speedExpMax,
-    playerConfig.speedExpStep,
-    playerConfig.speedExpPrecision,
+    () => Math.log2(conf.play.speed),
+    v => conf.play.speed = 2 ** v,
+    conf.play.speedExpMin,
+    conf.play.speedExpMax,
+    conf.play.speedExpStep,
+    conf.play.speedExpPrecision,
     'ArrowDownAlt,ArrowUpAlt,SlashAlt'
   )
 }
@@ -1182,9 +1194,9 @@ function createRangeBar(row, iconSet, title, apply, getConfig, setConfig, min, m
 function createLoopCheckbox(parent) {
   createCheckbox(
     parent,
-    playerConfig.repeatCount == -1,
+    conf.play.repeatCount == -1,
     v => {
-      playerConfig.repeatCount = -v
+      conf.play.repeatCount = -v
       if (state.player) state.player.setRepeatCount(-v)
     },
     'Loop',
@@ -1195,9 +1207,9 @@ function createLoopCheckbox(parent) {
 function createSeqCheckbox(parent) {
   createCheckbox(
     parent,
-    !playerConfig.sequentially,
+    !conf.play.sequentially,
     v => {
-      playerConfig.sequentially = !v
+      conf.play.sequentially = !v
       if (!state.player || !state.queue.length) return
       smashQueue(1)
       enqNextIfNeeded(state.queue[state.queue.length - 1])
@@ -1229,12 +1241,12 @@ function createFileButton(parent) {
     button.textContent = 'File'
     button.title = [
       'Select your module tracking music files to play (or just drag and drop them)',
-      'Supported file formats: ' + playableExts.join(', ')
+      'Supported file formats: ' + conf.playableExts.join(', ')
     ].join('\n')
     button.onclick = () => {
       let input = makeElem(parent, 'input', input => {
         input.type = 'File'
-        input.accept = playableExts.map(x => '.' + x).join(',')
+        input.accept = conf.playableExts.map(x => '.' + x).join(',')
         input.multiple = true
         input.hidden = true
       })
@@ -1267,7 +1279,7 @@ function createFilterSelect(parent) {
     select.value = localStorage['playgen:filter'] || 'none'
     select.addEventListener('change', () => {
       let filter = select.value
-      playerConfig.smoothing = filter == 'smooth' ? 80 : 0
+      conf.play.smoothing = filter == 'smooth' ? 80 : 0
       localStorage['playgen:filter'] = filter
     })
   })
@@ -1281,10 +1293,10 @@ function createBufferSelect(parent) {
       opt.textContent = '\u2005' + bufferSize
     })
     select.title = 'Buffer size (how many sample points are generated and processed at once)'
-    select.value = playerConfig.bufferSize
+    select.value = conf.play.bufferSize
     select.addEventListener('change', () => {
       let bufferSize = select.value
-      playerConfig.bufferSize = bufferSize
+      conf.play.bufferSize = bufferSize
       if (state.player) state.player.recreate()
       localStorage['playgen:bufferSize'] = bufferSize
     })
@@ -1296,7 +1308,7 @@ function createGraphButton(parent) {
     button.textContent = '📈'
     button.title = [
       'Toggle visual outputs [Shift \\]',
-      visualOutputs.map(g => '- ' + g.description).join('\n'),
+      conf.vis.outputs.map(g => '- ' + g.description).join('\n'),
       'For smooth output, try smaller buffer size',
     ].join('\n')
     button.addEventListener('click', toggleGraph)
@@ -1307,8 +1319,8 @@ function createGraphButton(parent) {
 // --- audio processing
 
 function processAudioOutput(outputL, outputR, length, sampleRate) {
-  let doTransform = playerConfig.smoothing
-  let doDump = playerConfig.useGraph
+  let doTransform = conf.play.smoothing
+  let doDump = conf.play.useGraph
   let lines = doDump ? {
     l: new Float32Array(outputL),
     r: new Float32Array(outputR),
@@ -1329,7 +1341,7 @@ function transformAudioOutput(outputL, outputR, length, sampleRate, lines) {
   if (!state.processing) state.processing = {}
   let v = state.processing
   // apply smoothing
-  let sm = Math.exp(-playerConfig.smoothing / 25)
+  let sm = Math.exp(-conf.play.smoothing / 25)
   let smc = 1 - sm
   if (!Number.isFinite(v.prevL)) v.prevL = 0
   if (!Number.isFinite(v.prevR)) v.prevR = 0
@@ -1342,10 +1354,10 @@ function transformAudioOutput(outputL, outputR, length, sampleRate, lines) {
 // --- visualizations
 
 function toggleGraph() {
-  let useGraph = playerConfig.useGraph
-  useGraph = visualOutputs[visualOutputs.indexOf(useGraph) + 1] || null
+  let useGraph = conf.play.useGraph
+  useGraph = conf.vis.outputs[conf.vis.outputs.indexOf(useGraph) + 1] || null
   localStorage['playgen:visual'] = useGraph ? useGraph.id : 'none'
-  playerConfig.useGraph = useGraph
+  conf.play.useGraph = useGraph
   resetGraph(useGraph)
 }
 
@@ -1363,8 +1375,8 @@ function getGraph(useGraph) {
     if (!canv) {
       canv = makeElem(document.body, 'canvas', canv => {
         canv.id = 'visual-output'
-        canv.width = visConfig.w
-        canv.height = visConfig.h
+        canv.width = conf.vis.w
+        canv.height = conf.vis.h
       })
     }
   }
@@ -1373,7 +1385,7 @@ function getGraph(useGraph) {
 
 function drawGraphOffload(graphData, lowPriority = false) {
   if (!graphData || !graphData.length) return
-  if (!visConfig.enableOffload) return drawGraph(graphData)
+  if (!conf.vis.enableOffload) return drawGraph(graphData)
   if (state.drawGraphPending != null) {
     if (lowPriority) return
     cancelAnimationFrame(state.drawGraphPending)
@@ -1383,10 +1395,10 @@ function drawGraphOffload(graphData, lowPriority = false) {
     if (graphData.tNext != null && t < graphData.tNext) {
       return drawGraphOffload(graphData, true)
     }
-    let sliced = sliceGraphData(graphData, visConfig.maxSamplesPerAnimFrame)
+    let sliced = sliceGraphData(graphData, conf.vis.maxSamplesPerAnimFrame)
     drawGraph(sliced.now)
     if (!sliced.later || !sliced.later.length) return
-    let itersLeft = sliced.later.length / visConfig.maxSamplesPerAnimFrame
+    let itersLeft = sliced.later.length / conf.vis.maxSamplesPerAnimFrame
     let animMsLeft = 1000 * sliced.later.length / sliced.later.sampleRate
     sliced.later.tNext = (graphData.tNext || t) + animMsLeft / itersLeft
     return drawGraphOffload(sliced.later, true)
@@ -1407,11 +1419,11 @@ function sliceGraphData(graphData, limit) {
 }
 
 function drawGraph(graphData) {
-  let useGraph = playerConfig.useGraph
+  let useGraph = conf.play.useGraph
   if (!useGraph) return
   let canv = getGraph(useGraph)
-  if (visConfig.debugColors) return drawDebug(canv, visConfig)
-  useGraph.f(canv, graphData, visConfig)
+  if (conf.vis.debugColors) return drawDebug(canv, conf.vis)
+  useGraph.f(canv, graphData, conf.vis)
 }
 
 function prepareCanvas(canv, graphParams) {
@@ -1440,7 +1452,7 @@ function drawWave(canv, graphData, graphParams) {
   c.globalCompositeOperation = graphParams.lineCompositeOperation
   for (let k in graphData.lines) {
     let l = graphData.lines[k]
-    let props = visConfig.lineProps[k] || {color: '#ccc'}
+    let props = conf.vis.lineProps[k] || {color: '#ccc'}
     if (props.alpha != null) c.globalAlpha = props.alpha
     c.lineWidth = props.size || graphParams.lineWidth
     c.beginPath()
@@ -1693,8 +1705,8 @@ function copyIdLink(q) {
   let id = q.id
   if (!id) return false
   let url = location.origin + location.pathname + '?id=' + id
-  if (playerConfig.repeatCount == -1) url += '&repeat'
-  if (playerConfig.speed != 1) url += '&speed=' + playerConfig.speed
+  if (conf.play.repeatCount == -1) url += '&repeat'
+  if (conf.play.speed != 1) url += '&speed=' + conf.play.speed
   return copyToClipboard(url)
 }
 
@@ -1818,16 +1830,16 @@ function saveSession() {
   if (!state.player) return
   let q = state.queue[state.queueIndex]
   if (!q || !q.id || q.customMetadata) return
-  if (playerConfig.restoreOnRefreshOnlyIfPlaying && !isPlaying()) return
+  if (conf.play.restoreOnRefreshOnlyIfPlaying && !isPlaying()) return
   localStorage['playgen:session'] = JSON.stringify({
     id: [q.id],
     t: state.player.getCurrentSeconds(),
-    speed: playerConfig.speed,
-    volume: playerConfig.volume,
-    anim: state.anim.enabled,
+    speed: conf.play.speed,
+    volume: conf.play.volume,
+    anim: conf.graffiti.anim.enabled,
     autoplay: isPlaying(),
     pl: state.sourceName == params.pl ? params.pl : null,
-    exp: Date.now() + playerConfig.restoreOnRefreshExpireMs,
+    exp: Date.now() + conf.play.restoreOnRefreshExpireMs,
   })
 }
 
@@ -1855,6 +1867,77 @@ function initSession() {
   window.addEventListener('beforeunload', saveSession)
 }
 
+// --- custom user config overrides
+
+function mutateObject(obj, overrides, path) {
+  if (typeof overrides != 'object') {
+    console.error(`Cannot override object with ${typeof overrides} at ${path}`)
+    return 0
+  }
+  if (Array.isArray(overrides)) {
+    console.error(`Cannot override object with array at ${path}`)
+    return 0
+  }
+  let count = 0
+  for (let k in overrides) {
+    let target = obj[k]
+    let src = overrides[k]
+    let newPath = path + (k.includes('.') ? '[' + k + ']' : '.' + k)
+    let isTargetObject = typeof target == 'object' && target != null
+    let isTargetArray = Array.isArray(target)
+    if (isTargetObject && src != null && !(Array.isArray(src) && isTargetArray)) {
+      count += ([mutateObject, mutateArray][+isTargetArray])(target, src, newPath)
+      continue
+    }
+    obj[k] = overrides[k]
+    count++
+  }
+  return count
+}
+
+function mutateArray(arr, overrides, path) {
+  let obj = {}
+  arr.forEach((x, i) => obj[i] = x)
+  let count = mutateObject(obj, overrides, path)
+  let newArr = []
+  for (k in obj) {
+    if (obj[k] == null) continue
+    let pos = Number.parseFloat(k)
+    if (!Number.isFinite(number)) {
+      console.error(`Cannot override array at non-float index ${k} at ${path}`)
+      continue
+    }
+    newArr.append({pos, value: obj[k]})
+  }
+  newArr.sort((a, b) => a.pos - b.pos)
+  arr.length = 0
+  arr.push(...newArr)
+  return count
+}
+
+function getConfOverrides() {
+  return safely(() => JSON.parse(localStorage['playgen:overrides'] || 'null'), null)
+}
+
+function loadConfOverrides() {
+  let overrides = getConfOverrides()
+  if (!overrides) return
+  let count = mutateObject(conf, overrides, 'conf')
+  console.info(`Loaded ${count} config overrides. If app breaks, try executing \`resetConfOverrides()\` to reset.`)
+}
+
+function setConfOverride(overrides) {
+  let target = getConfOverrides() || {}
+  let count = mutateObject(target, overrides, 'conf')
+  localStorage['playgen:overrides'] = JSON.stringify(target)
+  return count + ' overrides changed'
+}
+
+function resetConfOverrides() {
+  delete localStorage['playgen:overrides']
+  return 'reset done'
+}
+
 // --- ambient coloring
 
 function setPlayingStyle(q) {
@@ -1872,14 +1955,9 @@ function setAnimPeriod(period) {
   withElem('period', style => style.textContent = '.leaf{--period:'+period+'s;}')
 }
 
-const graffitiText = {
-  loading: 'Loading',
-  ok: 'Playgen',
-  error: '[error]',
-}
 function createGraffiti() {
   state.graffiti = makeElem(document.body, 'pre', graffiti => {
-    for (let i = 0; i < graffitiText.ok.length; i++) {
+    for (let i = 0; i < conf.graffiti.text.ok.length; i++) {
       makeElem(graffiti, 'span', e => {
         e.className = 'leaf'
         e.style.animationDelay = -i / 8 + 's'
@@ -1892,14 +1970,14 @@ function createGraffiti() {
 
 function setGraffitiStatus(status) {
   safely(() => {
-    let text = graffitiText[status]
+    let text = conf.graffiti.text[status]
     Array.from(state.graffiti.children).forEach((e, i) => e.textContent = text[i])
     state.graffiti.classList[['add', 'remove'][+(status != 'loading')]]('loading')
   })
 }
 
 function updateGraffitiAnim() {
-  let enabled = state.anim.enabled && isPlaying()
+  let enabled = conf.graffiti.anim.enabled && isPlaying()
   if (enabled != state.anim.state) {
     state.graffiti.classList[['add', 'remove'][+state.anim.state]]('waving')
     state.anim.state = enabled
@@ -2014,7 +2092,7 @@ async function createFakeAudioToMakeMediaSessionWork() {
         audioElem.currentTime = 0
         audioElem.onplay = null
       },
-      playerConfig.bubbleIntroMs
+      conf.play.bubbleIntroMs
     )
   }
   return audioElem.play()

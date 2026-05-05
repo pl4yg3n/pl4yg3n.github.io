@@ -10,10 +10,6 @@ const ChiptuneJsPlayer = function (config) {
 
 ChiptuneJsPlayer.prototype.constructor = ChiptuneJsPlayer
 
-ChiptuneJsPlayer.prototype.onTick = () => {}
-ChiptuneJsPlayer.prototype.onEnded = () => {}
-ChiptuneJsPlayer.prototype.onProcess = () => {}
-
 // metadata
 ChiptuneJsPlayer.prototype.getCurrentRow = function() {
   return libopenmpt._openmpt_module_get_current_row(this.currentPlayingNode.modulePtr)
@@ -44,7 +40,7 @@ ChiptuneJsPlayer.prototype.getCurrentSecondsRaw = function() {
 ChiptuneJsPlayer.prototype.setCurrentSeconds = function(t) {
   let start = this.currentPlayingNode.insn.start || 0
   let out = libopenmpt._openmpt_module_set_position_seconds(this.currentPlayingNode.modulePtr, Math.max(t, 0) + start)
-  this.onTick()
+  if (this.config.onTick) this.config.onTick()
   console.debug(`Position set to ${out.toFixed(2)} seconds`)
   return out
 }
@@ -238,14 +234,14 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
     }
     let ended = !this.modulePtr || (this.insn.end && this.player.getCurrentSecondsRaw() > this.insn.end)
     if (!ended) {
-      let distortedSampleRate = this.context.sampleRate / (this.config.speed || 1)
+      let distortedSampleRate = this.context.sampleRate / (config.speed || 1)
       let framesRendered = this.modulePtr && libopenmpt._openmpt_module_read_float_stereo(
         this.modulePtr, distortedSampleRate, bufferSize, this.lBufferPtr, this.rBufferPtr
       )
       if (framesRendered) {
         outputL.set(HEAPF32.subarray(this.lBufferPtr >> 2, (this.lBufferPtr >> 2) + framesRendered))
         outputR.set(HEAPF32.subarray(this.rBufferPtr >> 2, (this.rBufferPtr >> 2) + framesRendered))
-        processNode.player.onProcess(outputL, outputR, framesRendered, this.context.sampleRate)
+        if (config.onProcess) config.onProcess(outputL, outputR, framesRendered, this.context.sampleRate)
       } else {
         ended = true
       }
@@ -261,10 +257,10 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
         this.player.setCurrentSeconds(0)
       } else {
         this.stop()
-        processNode.player.onEnded()
+        if (config.onEnded) config.onEnded()
       }
     } else {
-      processNode.player.onTick()
+      if (config.onTick) config.onTick()
     }
   }
   return processNode
