@@ -147,15 +147,18 @@ conf.vis = {
   // offload
   enableOffload: true,
   maxSamplesPerAnimFrame: 1024,
+  // spectrum computing
+  nOscillators: 128,
+  nSubOscillators: 1,
+  mobileSubOscillators: false,
+  hzFrom: 100,
+  hzTo: 25600,
   // spectral graphs
   heatmapColorScheme: 'rgbe2',
   histogramPixelWidth: 1,
   spectralSampleSize: 1024,
   spectralNormMul: 1.2,
   spectralNormAdd: 0,
-  nOscillators: 128,
-  hzFrom: 100,
-  hzTo: 25600,
   spectrumBarRange: 6,
   spectrumFallSpeed: 3,
   spectrumOpacity: 0.2,
@@ -273,6 +276,7 @@ function safely(f, fallback) {
 // --- playing logic init
 
 async function launchPlayer() {
+  // fake audio must be here to fail if autoplay is denied
   await safely(createFakeAudioToMakeMediaSessionWork)
   state.player = new ChiptuneJsPlayer(conf.play)
 }
@@ -481,8 +485,8 @@ function playQueueItem(q, playIndex) {
     return q
   }
   q.played = true
-  setPlayingStyle(q)
   try {
+    setPlayingStyle(q)
     state.player.play(q.buffer, q.insn)
     if (q.insn && q.insn.t) delete q.insn.t
     safely(() => displayMetadataDelayed(q))
@@ -1044,6 +1048,7 @@ function updateProgressOffload() {
   state.tickPending = requestAnimationFrame(() => {
     state.tickPending = null
     updateProgress()
+    updateGraffitiAnim()
   })
 }
 
@@ -1625,43 +1630,55 @@ function heatmapColor(v, graphParams) { // for values mostly in [-5, 5]
 function computeSpectrum(graphData, graphParams, scale = 1) {
   let dataL = graphData.lines.l
   let dataR = graphData.lines.r
-  let n = Math.ceil(graphParams.nOscillators * scale)
+  let n = Math.ceil(graphParams.nOscillators * graphParams.nSubOscillators * (graphParams.mobileSubOscillators ? 1 : scale))
+  let nFinal = Math.ceil(graphParams.nOscillators * scale)
   let freqStep = (graphParams.hzTo / graphParams.hzFrom) ** (1 / n)
   let sinTable = new Float32Array(n)
   let cosTable = new Float32Array(n)
+  let phi = 2 * Math.PI * graphParams.hzFrom / graphData.sampleRate
   for (let k = 0; k < n; k++) {
-    let freq = graphParams.hzFrom * freqStep ** k
-    let phi = 2 * Math.PI * freq / graphData.sampleRate
     cosTable[k] = Math.cos(phi)
     sinTable[k] = Math.sin(phi)
+    phi *= freqStep
   }
   let i = 0
-  let x0L = dataL[i]
-  let x0R = dataR[i]
+  let x0 = dataL[i] + dataR[i]
   let results = []
   while (i < graphData.length) {
     let localLimit = Math.min(graphData.length, i + graphParams.spectralSampleSize)
     let x = new Float32Array(n)
     let y = new Float32Array(n)
     while (++i < localLimit) {
-      let x1L = dataL[i]
-      let x1R = dataR[i]
-      let dx = x1L - x0L + x1R - x0R
+      let x1 = dataL[i] + dataR[i]
+      let dx = x1 - x0
       for (let k = 0; k < n; k++) {
         let xk = x[k]
         let yk = y[k]
         x[k] = xk * cosTable[k] + dx - yk * sinTable[k]
         y[k] = xk * sinTable[k] + yk * cosTable[k]
       }
-      x0L = x1L
-      x0R = x1R
+      x0 = x1
     }
     for (let k = 0; k < n; k++) {
       x[k] = Math.hypot(x[k], y[k])
     }
     results.push(x)
   }
-  return results
+  if (n <= nFinal) return results
+  return results.map(arr => compactArray(arr, nFinal))
+}
+
+function compactArray(arr, n) {
+  let newArr = new Float32Array(n)
+  let k = arr.length / n
+  for (let i = 0; i < n; i++) {
+    let sum = 0
+    for (let j = 0; j < k; j++) {
+      sum += arr[i * k + j]
+    }
+    newArr[i] = sum / k
+  }
+  return newArr
 }
 
 // --- metadata controls
@@ -1951,10 +1968,6 @@ function setAmbientColor(ambientColor) {
 
 // --- graffiti animations
 
-function setAnimPeriod(period) {
-  withElem('period', style => style.textContent = '.leaf{--period:'+period+'s;}')
-}
-
 function createGraffiti() {
   state.graffiti = makeElem(document.body, 'pre', graffiti => {
     for (let i = 0; i < conf.graffiti.text.ok.length; i++) {
@@ -1982,21 +1995,14 @@ function updateGraffitiAnim() {
     state.graffiti.classList[['add', 'remove'][+state.anim.state]]('waving')
     state.anim.state = enabled
   }
-  if (enabled) {
-    if (!state.anim.timer) {
-      state.anim.timer = setInterval(updateGraffitiAnim, 100)
-    }
-  } else {
-    if (state.anim.timer) {
-      clearInterval(state.anim.timer)
-      state.anim.timer = null
-    }
-    return
-  }
-  let period = state.player.getCurrentTicksPerRow()
+  if (!enabled) return
+  setAnimPeriod(state.player.getCurrentTicksPerRow())
+}
+
+function setAnimPeriod(period) {
   if (state.anim.currPeriod == period) return
   state.anim.currPeriod = period
-  setAnimPeriod(period)
+  withElem('period', style => style.textContent = '.leaf{--period:'+period+'s;}')
 }
 
 // --- coloring by category
