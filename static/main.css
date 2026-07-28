@@ -290,6 +290,10 @@ summary:hover {
   display: block;
   opacity: 0.5;
 }
+#output-id-ma {
+  display: block;
+  opacity: 0.8;
+}
 .metadata-button {
   margin: 0.25em;
   height: 1.2em;

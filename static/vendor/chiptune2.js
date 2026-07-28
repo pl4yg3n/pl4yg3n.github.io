@@ -58,9 +58,9 @@ ChiptuneJsPlayer.prototype.getTotalPatterns = function() {
   return libopenmpt._openmpt_module_get_num_patterns(this.currentPlayingNode.modulePtr)
 }
 
-ChiptuneJsPlayer.prototype.setVolumeGainMillibells = function(volume) {
-  if (this.currentPlayingNode.insn && this.currentPlayingNode.insn.gainMillibells) {
-    volume += this.currentPlayingNode.insn.gainMillibells
+ChiptuneJsPlayer.prototype.setVolumeGainMillibels = function(volume) {
+  if (this.currentPlayingNode.insn && this.currentPlayingNode.insn.gainMillibels) {
+    volume += this.currentPlayingNode.insn.gainMillibels
     console.debug('Using amplified volume:', volume)
   }
   return libopenmpt._openmpt_module_set_render_param(this.currentPlayingNode.modulePtr, 1, volume)
@@ -132,8 +132,8 @@ ChiptuneJsPlayer.prototype.play = function(buffer, insn = {}) {
   insn = Object.assign({}, insn)
   this.stop()
   this.currentPlayingNode = this.createLibopenmptNode(buffer, this.config, insn)
-  this.setRepeatCount(this.config.repeatCount || +insn['repeat'] || 0)
-  this.setVolumeGainMillibells(this.config.volume)
+  this.setRepeatCount(this.config.repeatCount == 0 ? 0 : (this.config.repeatCount || +insn.repeat || 0))
+  this.setVolumeGainMillibels(this.config.volume)
   if (insn.t) {
     this.setCurrentSeconds(insn.t)
   } else if (insn.start) this.setCurrentSeconds(0)

@@ -102,6 +102,7 @@ conf.program.holidayEvent = {
 }
 
 conf.playlistAlias = {
+  // pregenerated aliases: 'full', 'playable', 'accepted' ('c:0123mn')
   day: 'c:0123',
   day_good: 'c:123',
   day_gold: 'c:23',
@@ -137,6 +138,7 @@ conf.vis = {
     {id: 'spectrum', f: drawSpectrum, description: 'Spectrum wave: equalizer-style spectrum of frequencies'},
     {id: 'spectrogram', f: drawSpectrogram, description: 'Spectrogram: histogram for a spectrum of frequencies'},
     {id: 'soundwave', f: drawWave, description: 'Sound wave: raw lines for stereo (left - blue, right - orange)'},
+    {id: 'debug', f: drawDebug, description: 'Debug spectral colors', hidden: true},
   ],
   // canvas
   w: 2048,
@@ -160,7 +162,7 @@ conf.vis = {
   spectralNormMul: 1.2,
   spectralNormAdd: 0,
   spectrumBarRange: 6,
-  spectrumFallSpeed: 3,
+  spectrumFallSpeed: 5,
   spectrumOpacity: 0.2,
   spectrumCompositeOperation: 'destination-over',
   spectrumSmoothingIters: 2,
@@ -173,6 +175,12 @@ conf.vis = {
     lIn: {color: '#05c', alpha: 0.5},
     rIn: {color: '#a30', alpha: 0.5},
   },
+}
+
+conf.ambient = {
+  initialColor: null, // '#050',
+  defaultColor: '#aaa',
+  changeByMusic: true,
 }
 
 conf.graffiti = {
@@ -207,11 +215,11 @@ conf.play = {
   speedExpMax: 3,
   speedExpPrecision: 1/32,
 
-  // all volume in relative millibells
-  volume: Math.min(+params.volume || 0, 0),
+  // all volume in relative millibels
+  volume: +params.volume || 0,
   volumeStep: 250,
   volumeMin: -4000,
-  volumeMax: 0,
+  volumeMax: 1000,
   volumePrecision: 1,
   volumeAddForLowVolumeTracks: 500,
 
@@ -220,16 +228,17 @@ conf.play = {
   rewindTailSeconds: 20,
   seekPrecision: 0.1,
 
-  repeatCount: (x => x === true ? -1 : +x)(params.repeat) || null,
+  repeatCount: params.repeat === '0' ? 0 : ((x => x === true ? -1 : +x)(params.repeat) || null),
   sequentially: !!params.seq,
   autoplay: !!params.autoplay,
+  noError: !!params.noerror,
   restoreOnRefreshExpireMs: 3600000, // 1h
   restoreOnRefreshOnlyIfPlaying: false,
 
   bubbleIntroMs: 800,
   tickFactor: 1 / 3,
   maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
-  useGraph: ((id) => conf.vis.outputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || 'spectrum'),
+  useGraph: ((id) => conf.vis.outputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || conf.vis.outputs[0].id),
 
   // callbacks
   onEnded: playNext,
@@ -244,7 +253,7 @@ conf.urls = {
   musicPathLocal: 'data/',
   musicUrlModArchive: 'https://api.modarchive.org/downloads.php?moduleid=',
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
-  modArchiveMaxId: 213304,
+  modArchiveMaxId: 214535,
 }
 
 const state = {
@@ -320,11 +329,12 @@ async function enqNext(hint) {
   if (!state.source) return
   if (typeof state.source == 'string') {
     if (state.source == 'ma:random') {
-      return enqMa(0, 0).catch(err => {
+      let idMaNext = conf.play.sequentially && hint ? (hint.idMa || 0) + 1 : 0
+      return enqMa(idMaNext, 0, true).catch(err => {
         if (typeof err == 'string' && err.startsWith('Invalid response')) {
-          enqNextIfNeeded()
+          return enqNextIfNeeded()
         } else {
-          enqOnError(err.toString())
+          return enqOnError(err.toString())
         }
       })
     }
@@ -370,7 +380,7 @@ async function enqUrl(url, color='#999', solid=2) {
   }).then(q => {console.info('Enqueued:', q); return q})
 }
 
-async function enqMa(id, solid=2) {
+async function enqMa(id, solid=2, noError) {
   id = +id
   if (!id) {
     id = Math.floor(Math.random() * conf.urls.modArchiveMaxId) + 1
@@ -378,34 +388,32 @@ async function enqMa(id, solid=2) {
   return addToQueue({
     src: conf.urls.musicUrlModArchive + id,
     color: '#99a8a8',
+    insn: {
+      t: params.t,
+    },
     id: 'ma:' + id,
     idMa: id,
     solid,
+    noError
   })
 }
 
-function getTimeParamOnce() {
-  let t = params.t
-  if (!t) return
-  delete params.t
-  return t
-}
-
-async function enqEntry(e, solid=1, customMetadata) {
+async function enqEntry(e, solid=1, customMetadata, noError) {
   return addToQueue({
     e,
     src: conf.urls.collectionUrlRoot + conf.urls.musicPathLocal + e.path.replaceAll('%', '%25').replaceAll('#', '%23'),
     color: category_to_color(e.c, e.q, e.m),
     insn: {
       start: e.tags['t:start'],
-      t: getTimeParamOnce(),
+      t: params.t,
       end: e.tags['t:end'],
       repeat: e.tags['repeat'],
-      gainMillibells: (e.tags['d:lvol'] || 0) * conf.play.volumeAddForLowVolumeTracks,
+      gainMillibels: (e.tags['d:lvol'] || 0) * conf.play.volumeAddForLowVolumeTracks,
     },
     id: e.md5.slice(0, 10),
     idMa: +e.tags['id:ma'] || +e.tags['id:dup:ma'] || null,
     solid,
+    noError,
     customMetadata: customMetadata
   })
 }
@@ -422,6 +430,7 @@ function smashQueue(force) {
 }
 
 async function addToQueue(q) {
+  if (params.t) delete params.t
   if (!q.buffer && !q.src) throw 'Failed to enqueue incomplete object!'
   let smashCurrent = smashQueue(q.solid)
   q.queueIndex = state.queue.push(q) - 1
@@ -434,7 +443,7 @@ async function addToQueue(q) {
     .then(buffer => {
       if (buffer.byteLength < 20) throw 'Invalid response at ' + q.src
       q.buffer = buffer
-      console.debug('Loaded:', q.src)
+      console.debug('Loaded:', q.src, `(${(q.buffer.byteLength / 1048576).toFixed(2)} MiB)`)
       return q
     })
     .catch(err => {
@@ -494,7 +503,7 @@ function playQueueItem(q, playIndex) {
     withElem('more-options', elem => elem.parentElement.hidden = false)
   } catch (err) {
     unlistQueueItem(q)
-    if (!q.customMetadata) playOnError(err)
+    if (!q.noError) playOnError(err)
   }
   // todo: unload buffer after another play
   //if (!q.persist) q.buffer = null
@@ -604,7 +613,8 @@ async function playOnError(err) {
 }
 
 async function enqOnError(errorMessage) {
-  return enqEntry(pick(playlists.playable.filter(e => e.tags.error)), 0, {title: 'Error!', message: errorMessage})
+  if (conf.play.noError) return
+  return enqEntry(pick(playlists.playable.filter(e => e.tags.error)), 0, {title: 'Error!', message: errorMessage}, true)
 }
 
 // --- file dropping
@@ -1119,7 +1129,7 @@ function createVolumeBar(row) {
     row,
     '🔈 🔉 🔊',
     'Volume',
-    v => {if (state.player) state.player.setVolumeGainMillibells(v)},
+    v => {if (state.player) state.player.setVolumeGainMillibels(v)},
     () => conf.play.volume,
     v => conf.play.volume = v,
     conf.play.volumeMin,
@@ -1313,11 +1323,12 @@ function createGraphButton(parent) {
     button.textContent = '📈'
     button.title = [
       'Toggle visual outputs [Shift \\]',
-      conf.vis.outputs.map(g => '- ' + g.description).join('\n'),
+      conf.vis.outputs.filter(g => !g.hidden).map(g => '- ' + g.description).join('\n'),
       'For smooth output, try smaller buffer size',
     ].join('\n')
     button.addEventListener('click', toggleGraph)
     state.keyDownListeners['BackslashShift'] = toggleGraph
+    state.keyDownListeners['BackslashShiftAlt'] = toggleGraph
   })
 }
 
@@ -1358,9 +1369,10 @@ function transformAudioOutput(outputL, outputR, length, sampleRate, lines) {
 
 // --- visualizations
 
-function toggleGraph() {
+function toggleGraph(event) {
   let useGraph = conf.play.useGraph
   useGraph = conf.vis.outputs[conf.vis.outputs.indexOf(useGraph) + 1] || null
+  if (!event.altKey && useGraph != null && useGraph.hidden) useGraph = null
   localStorage['playgen:visual'] = useGraph ? useGraph.id : 'none'
   conf.play.useGraph = useGraph
   resetGraph(useGraph)
@@ -1427,7 +1439,6 @@ function drawGraph(graphData) {
   let useGraph = conf.play.useGraph
   if (!useGraph) return
   let canv = getGraph(useGraph)
-  if (conf.vis.debugColors) return drawDebug(canv, conf.vis)
   useGraph.f(canv, graphData, conf.vis)
 }
 
@@ -1538,13 +1549,13 @@ function smoothArray(arr, nIters = 1, mostlyTail = false) {
   return arrNew
 }
 
-function drawDebug(canv, graphParams) {
+function drawDebug(canv, graphData, graphParams) {
   let screen = prepareCanvas(canv, graphParams)
   let c = canv.getContext('2d')
   c.clearRect(0, 0, screen.w, screen.h)
   c.globalCompositeOperation = 'source-over'
   let n = Math.ceil(screen.w / 8)
-  let heatmapNames = 'hsl0,hsl1,hsl2,rgb0,rgb1,rgb2,rgb3,rgbe1,rgbe2,green'.split(',')
+  let heatmapNames = 'hsl0,hsl1,hsl2,rgb0,rgb1,rgb2,rgb3,rgbe1,rgbe2,999,090,950,990009,999009,900006'.split(',')
   let nHeatmaps = heatmapNames.length
   for (let j = 0; j < nHeatmaps; j++) {
     let y0 = Math.round(j / nHeatmaps * screen.h)
@@ -1621,8 +1632,12 @@ function heatmapColor(v, graphParams) { // for values mostly in [-5, 5]
       let b = Math.round(v > 6.0 ? 255 : 120*Math.exp(-((v+1.5)**2)/4) + 255/(((v-6.0)**4)/8+1))||0
       return `rgb(${r} ${g} ${b})`
     }
-    default: {
-      return `rgb(0 ${Math.max(0, Math.min(Math.round(255 * (0.5 + v/12)), 255))} 0)`
+    default: { // arbitrary 2-color gradient
+      let l = 0.5 + v/12
+      let h = graphParams.heatmapColorScheme
+      let m = typeof h == 'string' ? 1/9 : 1
+      let c = k => Math.max(0, Math.min(Math.round(255 * m * ((+h[k]||0) * l + (+h[3+k]||0) * (1-l))), 255))
+      return `rgb(${c(0)} ${c(1)} ${c(2)})`
     }
   }
 }
@@ -1872,6 +1887,7 @@ function setSession(s) {
     console.debug('Setting session:', s)
     if (s.exp && Date.now() > s.exp) return
     if (params.pl && s.pl != params.pl) return
+    if (params.volume) delete s.volume
     delete s.exp
     Object.assign(params, s)
   } catch(err) {
@@ -1960,9 +1976,10 @@ function resetConfOverrides() {
 function setPlayingStyle(q) {
   console.info('Playing:', q.e ? q.e.line : q.src || q.fileName)
   console.debug('Queue pos:', state.queue.indexOf(q) + 1, '/', state.queue.length)
-  setAmbientColor(q.color ? q.color : '#aaa')
+  if (conf.ambient.changeByMusic) setAmbientColor(q.color)
 }
 function setAmbientColor(ambientColor) {
+  if (!ambientColor) ambientColor = conf.ambient.defaultColor
   withElem('ambient', style => style.textContent = 'html{--ambient:'+ambientColor+';}')
 }
 
@@ -2104,6 +2121,8 @@ async function createFakeAudioToMakeMediaSessionWork() {
   return audioElem.play()
 }
 
+// --- run startup
+
 function linkMail() {
   withElem('about-container', c => withElem('mail', raw =>
       c.addEventListener('toggle', () => {
@@ -2113,8 +2132,12 @@ function linkMail() {
   ))
 }
 
-// --- run startup
+function startup() {
+  createGraffiti()
+  loadIndex()
+  linkMail()
+  if (conf.ambient.initialColor) setAmbientColor(conf.ambient.initialColor)
+  if (params.tab) withElem(params.tab + '-container', e => e.setAttribute('open', ''))
+}
 
-createGraffiti()
-loadIndex()
-linkMail()
+startup()
