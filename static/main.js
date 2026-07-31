@@ -235,7 +235,7 @@ conf.play = {
   restoreOnRefreshOnlyIfPlaying: false,
 
   bubbleIntroMs: 800,
-  tickFactor: 1 / 3,
+  tickFactor: 1,
   maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
   useGraph: ((id) => conf.vis.outputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || conf.vis.outputs[0].id),
 
@@ -271,6 +271,7 @@ const state = {
     let favString = localStorage['playgen:favorites']
     return favString ? JSON.parse(favString) : []
   }, []),
+  pending: {}, // pending calls and animations
 }
 safely(loadConfOverrides) // try overriding config with custom values
 
@@ -279,6 +280,24 @@ function safely(f, fallback) {
     console.error(err)
     return fallback
   }
+}
+
+function offloadAnimation(name, f) {
+  let old = state.pending[name]
+  if (old != null) cancelAnimationFrame(old) // avoid cramming
+  state.pending[name] = requestAnimationFrame(t => {
+    state.pending[name] = null
+    f(t)
+  })
+}
+
+function offloadCall(name, f) {
+  let old = state.pending[name]
+  if (old != null) clearTimeout(old) // avoid cramming
+  state.pending[name] = setTimeout(() => {
+    state.pending[name] = null
+    f()
+  })
 }
 
 // --- playing logic init
@@ -494,10 +513,12 @@ function playQueueItem(q, playIndex) {
   }
   q.played = true
   try {
-    setPlayingStyle(q)
+    offloadAnimation('style', () => setPlayingStyle(q))
     state.player.play(q.buffer, q.insn)
     if (q.insn && q.insn.t) delete q.insn.t
-    safely(() => displayMetadataDelayed(q))
+    console.info('Playing:', q.e ? q.e.line : q.src || q.fileName)
+    //console.debug('Queue pos:', state.queue.indexOf(q) + 1, '/', state.queue.length)
+    offloadCall('metadata', () => displayMetadataDelayed(q))
     resetProgress()
     withElem('more-options', elem => elem.parentElement.hidden = false)
   } catch (err) {
@@ -547,7 +568,7 @@ function dropQueueChunk(removedIndex, count=1) {
 function displayMetadataDelayed(q) {
   let data = q.customMetadata || state.player.metadata()
   safely(() => setMediaMetadata(q, data))
-  requestAnimationFrame(() => displayMetadata(q, data))
+  offloadAnimation('metadata-render', () => displayMetadata(q, data))
 }
 
 function setMediaMetadata(q, data) {
@@ -1053,9 +1074,7 @@ function resetProgress() {
 }
 
 function updateProgressOffload() {
-  if (state.tickPending != null) cancelAnimationFrame(state.tickPending)
-  state.tickPending = requestAnimationFrame(() => {
-    state.tickPending = null
+  offloadAnimation('tick', () => {
     updateProgress()
     updateGraffitiAnim()
   })
@@ -1973,8 +1992,6 @@ function resetConfOverrides() {
 // --- ambient coloring
 
 function setPlayingStyle(q) {
-  console.info('Playing:', q.e ? q.e.line : q.src || q.fileName)
-  console.debug('Queue pos:', state.queue.indexOf(q) + 1, '/', state.queue.length)
   if (conf.ambient.changeByMusic) setAmbientColor(q.color)
 }
 function setAmbientColor(ambientColor) {

@@ -25,7 +25,8 @@ ChiptuneJsPlayer.prototype.getCurrentOrder = function() {
 }
 
 ChiptuneJsPlayer.prototype.getCurrentTicksPerRow = function() {
-  return 240 / (libopenmpt._openmpt_module_get_current_estimated_bpm(this.currentPlayingNode.modulePtr) * (this.config.speed || 1))
+  return 240 / (libopenmpt._openmpt_module_get_current_estimated_bpm(this.currentPlayingNode.modulePtr)
+    * (this.config.tickFactor || 1) * (this.config.speed || 1))
 }
 
 ChiptuneJsPlayer.prototype.getCurrentSeconds = function() {
@@ -223,45 +224,49 @@ ChiptuneJsPlayer.prototype.createLibopenmptNode = function(buffer, config, insn)
     }
   }
 
-  processNode.onaudioprocess = function(e) {
-    let outputL = e.outputBuffer.getChannelData(0)
-    let outputR = e.outputBuffer.getChannelData(1)
-    if (!this.modulePtr || this.paused) {
-      outputL.fill(0)
-      outputR.fill(0)
-      if (!this.modulePtr) this.stop()
-      return
-    }
-    let ended = !this.modulePtr || (this.insn.end && this.player.getCurrentSecondsRaw() > this.insn.end)
-    if (!ended) {
-      let distortedSampleRate = this.context.sampleRate / (config.speed || 1)
-      let framesRendered = this.modulePtr && libopenmpt._openmpt_module_read_float_stereo(
-        this.modulePtr, distortedSampleRate, bufferSize, this.lBufferPtr, this.rBufferPtr
-      )
-      if (framesRendered) {
-        outputL.set(HEAPF32.subarray(this.lBufferPtr >> 2, (this.lBufferPtr >> 2) + framesRendered))
-        outputR.set(HEAPF32.subarray(this.rBufferPtr >> 2, (this.rBufferPtr >> 2) + framesRendered))
-        if (config.onProcess) config.onProcess(outputL, outputR, framesRendered, this.context.sampleRate)
-      } else {
-        ended = true
-      }
-      if (framesRendered < bufferSize) {
-        outputL.fill(0, framesRendered, bufferSize)
-        outputR.fill(0, framesRendered, bufferSize)
-      }
-    }
-    if (ended) {
-      let repeatCount = this.player.getRepeatCount()
-      if (repeatCount) {
-        if (repeatCount > 0) this.player.setRepeatCount(repeatCount - 1)
-        this.player.setCurrentSeconds(0)
-      } else {
-        this.stop()
-        if (config.onEnded) config.onEnded()
-      }
+  processNode.onaudioprocess = this.processAudio
+  return processNode
+}
+
+ChiptuneJsPlayer.prototype.processAudio = function(e) {
+  let config = this.config
+  let bufferSize = this.bufferSize
+  let outputL = e.outputBuffer.getChannelData(0)
+  let outputR = e.outputBuffer.getChannelData(1)
+  if (!this.modulePtr || this.paused) {
+    outputL.fill(0)
+    outputR.fill(0)
+    if (!this.modulePtr) this.stop()
+    return
+  }
+  let ended = !this.modulePtr || (this.insn.end && this.player.getCurrentSecondsRaw() > this.insn.end)
+  if (!ended) {
+    let distortedSampleRate = this.context.sampleRate / (config.speed || 1)
+    let framesRendered = this.modulePtr && libopenmpt._openmpt_module_read_float_stereo(
+      this.modulePtr, distortedSampleRate, bufferSize, this.lBufferPtr, this.rBufferPtr
+    )
+    if (framesRendered) {
+      outputL.set(HEAPF32.subarray(this.lBufferPtr >> 2, (this.lBufferPtr >> 2) + framesRendered))
+      outputR.set(HEAPF32.subarray(this.rBufferPtr >> 2, (this.rBufferPtr >> 2) + framesRendered))
+      if (config.onProcess) config.onProcess(outputL, outputR, framesRendered, this.context.sampleRate)
     } else {
-      if (config.onTick) config.onTick()
+      ended = true
+    }
+    if (framesRendered < bufferSize) {
+      outputL.fill(0, framesRendered, bufferSize)
+      outputR.fill(0, framesRendered, bufferSize)
     }
   }
-  return processNode
+  if (ended) {
+    let repeatCount = this.player.getRepeatCount()
+    if (repeatCount) {
+      if (repeatCount > 0) this.player.setRepeatCount(repeatCount - 1)
+      this.player.setCurrentSeconds(0)
+    } else {
+      this.stop()
+      if (config.onEnded) config.onEnded()
+    }
+  } else {
+    if (config.onTick) config.onTick()
+  }
 }
