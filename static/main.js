@@ -1,5 +1,4 @@
 ﻿'use strict'
-const libopenmpt = {}
 
 const params = safely(parseUrlParams, {}) // input parameters
 safely(initSession) // try restoring last values of some parameters
@@ -20,7 +19,7 @@ conf.modes = [
   {name: '🏙️ Day', p: 'day', title: 'Active musical tracks usually played during day'},
   {name: '🌇 Evening', p: 'night_1', title: 'Musical tracks usually played around 21:00'},
   {name: '🌆 Twilight', p: 'night_2', title: 'Partially calm tracks usually played around 22:30'},
-  {name: '🌉 Night', p: 'night_wide', title: 'Calm tracks usually played from 22:00 to 06:00'},
+  {name: '🌉 Night', p: 'night_wide', title: 'Calm tracks usually played from 22:00 to 06:00 (Twilight + Midnight)'},
   {name: '🌃 Midnight', p: 'night_4', title: 'Calm tracks usually played from 00:00 to 05:00'},
   {name: '🛌 Late', p: 'night_5', title: 'Quiet tracks usually played from 01:00 to 04:00', hidden: true},
   {name: '🌅 Early', p: 'morning_1', title: 'Calm tracks usually played around 07:00', hidden: true},
@@ -339,19 +338,19 @@ async function enqNext(hint) {
       })
     }
     if (state.source == 'favorites') {
-      return state.favorites.length ? enqById(pick(state.favorites, hint), 0) : enqOnError('No favorites left!')
+      return state.favorites.length ? enqById(pick(state.favorites, hint && hint.id), 0) : enqOnError('No favorites left!')
     }
     return enqOnError('invalid source')
   }
-  let e = pick(state.source, hint)
+  let e = pick(state.source, hint && hint.e)
   return enqEntry(e, 0)
 }
 
 function pick(arr, hint) {
   if (arr.length == 0) throw 'Cannot pick from empty array!'
   if (conf.play.sequentially) {
-    if (hint && hint.e) {
-      let index = arr.indexOf(hint.e) + 1
+    if (hint) {
+      let index = arr.indexOf(hint) + 1
       if (index == arr.length) {
         index = 0
       }
@@ -1127,7 +1126,7 @@ function createOptionalControls(parent) {
 function createVolumeBar(row) {
   createRangeBar(
     row,
-    '🔈 🔉 🔊',
+    '🔈 🔉 🔉 🔊 🔊 💥',
     'Volume',
     v => {if (state.player) state.player.setVolumeGainMillibels(v)},
     () => conf.play.volume,

@@ -1,5 +1,6 @@
 // original lib (very outdated): https://github.com/deskjet/chiptune2.js
 'use strict'
+const libopenmpt = {}
 
 // player
 const ChiptuneJsPlayer = function (config) {
@@ -24,8 +25,7 @@ ChiptuneJsPlayer.prototype.getCurrentOrder = function() {
 }
 
 ChiptuneJsPlayer.prototype.getCurrentTicksPerRow = function() {
-  return libopenmpt._openmpt_module_get_current_speed(this.currentPlayingNode.modulePtr)
-    * (this.config.tickFactor || 1) / (this.config.speed || 1)
+  return 240 / (libopenmpt._openmpt_module_get_current_estimated_bpm(this.currentPlayingNode.modulePtr) * (this.config.speed || 1))
 }
 
 ChiptuneJsPlayer.prototype.getCurrentSeconds = function() {
