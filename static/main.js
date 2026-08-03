@@ -53,7 +53,9 @@ conf.modes = [
 
   {name: '🛠️ Custom', p: 'custom', title: 'Custom playlist', hidden: 2}
 ]
-conf.program = {}
+conf.program = {
+  defaultPlaylist: '@auto'
+}
 conf.program.hourly = [
   /* 00: */ 'night_4',
   /* 01: */ 'night_5',
@@ -220,7 +222,6 @@ conf.play = {
   volumeMin: -4000,
   volumeMax: 1000,
   volumePrecision: 1,
-  volumeAddForLowVolumeTracks: 500,
 
   // seek/rewind in seconds
   rewindStepSeconds: 5,
@@ -773,7 +774,7 @@ function plCode2Function(code) {
       if (negate) js = '!' + js
       return js
     }
-    throw `Could not recognize playlist expression '${expr}'`
+    throw `Could not recognize playlist expression '${expr}' in '${code}'`
   }).join(' && ')).join(' || '))
 }
 
@@ -1102,20 +1103,16 @@ function createModeSelect(parent) {
       selectPlaylist(p)
       localStorage['playgen:mode'] = p
     })
-    // pre-select playlist mode from url params
-    let urlPlaylistModeParam = params.pl
-    if (urlPlaylistModeParam) {
-      try {
-        selectPlaylist(urlPlaylistModeParam)
-        select.value = conf.modes.find(x => x.p == urlPlaylistModeParam) ? urlPlaylistModeParam : 'custom'
-        return
-      } catch (err) {
-        console.error(err)
-      }
+    function tryPlaylist(name) {
+      if (!name) return
+      return safely(() => {
+        selectPlaylist(name)
+        select.value = conf.modes.find(x => x.p == name) ? name : 'custom'
+        return true
+      })
     }
-    // if not, then pre-select playlist mode from last time
-    select.value = localStorage['playgen:mode'] || '@auto'
-    selectPlaylist(select.value)
+    // pre-select playlist mode from url params, or from last time
+    tryPlaylist(params.pl) || tryPlaylist(localStorage['playgen:mode']) || tryPlaylist(conf.program.defaultPlaylist)
   })
 }
 
