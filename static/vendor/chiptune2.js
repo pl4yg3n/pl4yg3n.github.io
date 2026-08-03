@@ -62,7 +62,6 @@ ChiptuneJsPlayer.prototype.getTotalPatterns = function() {
 ChiptuneJsPlayer.prototype.setVolumeGainMillibels = function(volume) {
   if (this.currentPlayingNode.insn && this.currentPlayingNode.insn.gainMillibels) {
     volume += this.currentPlayingNode.insn.gainMillibels
-    console.debug('Using amplified volume:', volume)
   }
   return libopenmpt._openmpt_module_set_render_param(this.currentPlayingNode.modulePtr, 1, volume)
 }

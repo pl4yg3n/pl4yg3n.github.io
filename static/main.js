@@ -426,7 +426,7 @@ async function enqEntry(e, solid=1, customMetadata, noError) {
       t: params.t,
       end: e.tags['t:end'],
       repeat: e.tags['repeat'],
-      gainMillibels: (e.tags['d:lvol'] || 0) * conf.play.volumeAddForLowVolumeTracks,
+      gainMillibels: e.tags['vol'],
     },
     id: e.md5.slice(0, 10),
     idMa: +e.tags['id:ma'] || +e.tags['id:dup:ma'] || null,
