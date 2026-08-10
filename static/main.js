@@ -1712,6 +1712,12 @@ function computeSpectrum(graphData, graphParams, scale = 1, smoothIters = 0, ste
     let resultL = computeSpectrumLine(dataL, graphData.sampleRate, graphParams, scale / 2, smoothIters)
     let resultR = computeSpectrumLine(dataR, graphData.sampleRate, graphParams, scale / 2, smoothIters)
     if (stereo == 2) return [resultL, resultR]
+    if (smoothIters) resultL.map((arrL, i) => {
+      let arrR = resultR[i]
+      let mid = (arrL[0] + arrR[0]) / 2
+      arrL[0] = arrL[0] / 2 + mid
+      arrR[0] = arrR[0] / 2 + mid
+    })
     return resultL.map((arrL, i) => Float32Array.of(...arrL.reverse(), ...resultR[i]))
   }
   return computeSpectrumLine(dataL.map((x, i) => x + dataR[i]), graphData.sampleRate, graphParams, scale, smoothIters)
