@@ -276,6 +276,7 @@ conf.urls = {
   musicUrlModArchive: 'https://api.modarchive.org/downloads.php?moduleid=',
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
   modArchiveMaxId: 214535,
+  cacheMusic: 'no-store',
 }
 
 const state = {
@@ -476,7 +477,9 @@ async function addToQueue(q) {
   let smashCurrent = smashQueue(q.solid)
   q.queueIndex = state.queue.push(q) - 1
   console.debug('Added to queue:', q)
-  let loaded = q.buffer ? Promise.resolve(q) : fetch(q.src)
+  let loaded = q.buffer ? Promise.resolve(q) : fetch(q.src, {
+    cache: conf.urls.cacheMusic,
+  })
     .then(x => {
       if (x.status != 200) throw 'Bad response status: ' + x.status + ' at ' + q.src
       return x.arrayBuffer()
