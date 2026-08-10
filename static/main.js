@@ -154,6 +154,8 @@ conf.playlistAlias = {
 conf.vis = {
   outputs: [
     {id: 'spectrum', f: drawSpectrum, description: 'Spectrum wave: equalizer-style spectrum of frequencies'},
+    {id: 'spectrumline', f: drawSpectrumLine, description: 'Spectrum line: spectrum wave drawn as a simple line', hidden: true},
+    {id: 'spectrumstereo', f: drawSpectrumStereo, description: 'Spectrum wave stereo: same with left & right separated'},
     {id: 'spectrogram', f: drawSpectrogram, description: 'Spectrogram: histogram for a spectrum of frequencies'},
     {id: 'soundwave', f: drawWave, description: 'Sound wave: raw lines for stereo (left - blue, right - orange)'},
     {id: 'debug', f: drawDebug, description: 'Debug spectral colors', hidden: true},
@@ -184,8 +186,10 @@ conf.vis = {
   spectrumOpacity: 0.2,
   spectrumCompositeOperation: 'destination-over',
   spectrumSmoothingIters: 2,
-  // wave graph
+  spectrumLinePrecision: 4,
+  // sound wave graph
   lineWidth: 2.5,
+  lineMiterLimit: 5,
   lineCompositeOperation: 'screen',
   lineProps: {
     l: {color: '#0af'},
@@ -1403,8 +1407,10 @@ function transformAudioOutput(outputL, outputR, length, sampleRate, lines) {
 
 function toggleGraph(event) {
   let useGraph = conf.play.useGraph
-  useGraph = conf.vis.outputs[conf.vis.outputs.indexOf(useGraph) + 1] || null
-  if (!event.altKey && useGraph != null && useGraph.hidden) useGraph = null
+  let i = conf.vis.outputs.indexOf(useGraph)
+  do {
+    useGraph = conf.vis.outputs[++i] || null
+  } while (useGraph != null && !event.altKey && useGraph.hidden)
   localStorage['playgen:visual'] = useGraph ? useGraph.id : 'none'
   conf.play.useGraph = useGraph
   resetGraph(useGraph)
@@ -1492,12 +1498,13 @@ function prepareCanvas(canv, graphParams) {
   return {w, h, wScale}
 }
 
-function drawWave(canv, graphData, graphParams) {
+function drawWave(canv, graphData, graphParams, valueScale = 1) {
   let screen = prepareCanvas(canv, graphParams)
   let scaleW = screen.w / graphData.length
   let c = canv.getContext('2d')
   c.clearRect(0, 0, screen.w, screen.h)
   c.globalCompositeOperation = graphParams.lineCompositeOperation
+  c.miterLimit = graphParams.lineMiterLimit
   for (let k in graphData.lines) {
     let l = graphData.lines[k]
     let props = conf.vis.lineProps[k] || {color: '#ccc'}
@@ -1506,12 +1513,26 @@ function drawWave(canv, graphData, graphParams) {
     c.beginPath()
     let scaleH = (props.oh || 0.5) * screen.h
     for (let i = 0; i < l.length; ++i) {
-      c.lineTo((i + 0.5) * scaleW, (1 - l[i]) * scaleH)
+      c.lineTo((i + 0.5) * scaleW, (1 - l[i] * valueScale) * scaleH)
     }
     c.strokeStyle = props.color
     c.stroke()
     if (props.alpha != null) c.globalAlpha = 1
   }
+}
+
+function drawSpectrumLine(canv, graphData, graphParams) {
+  let graphDataNew = {lines: {}}
+  for (let c of ['l', 'r']) {
+    graphDataNew.lines[c] = computeSpectrumLine(
+      graphData.lines[c],
+      graphData.sampleRate,
+      graphParams,
+      graphParams.spectrumLinePrecision
+    )[0].map(x => normalizeSpectralValue(x, graphParams))
+  }
+  graphDataNew.length = graphDataNew.lines.l.length
+  return drawWave(canv, graphDataNew, graphParams, 1 / graphParams.spectrumBarRange)
 }
 
 function drawSpectrogram(canv, graphData, graphParams) {
@@ -1532,11 +1553,11 @@ function drawSpectrogram(canv, graphData, graphParams) {
   }))
 }
 
-function drawSpectrum(canv, graphData, graphParams) {
+function drawSpectrum(canv, graphData, graphParams, stereo = false) {
   let screen = prepareCanvas(canv, graphParams)
-  let valueScale = graphParams.spectrumBarRange
+  let valueScale = 1 / graphParams.spectrumBarRange
   let c = canv.getContext('2d')
-  let spectralData = computeSpectrum(graphData, graphParams, screen.wScale)
+  let spectralData = computeSpectrum(graphData, graphParams, screen.wScale, graphParams.spectrumSmoothingIters, stereo)
   c.globalCompositeOperation = 'copy'
   let fall = graphParams.spectrumFallSpeed * spectralData.length
   c.drawImage(canv, 0, fall)
@@ -1545,18 +1566,21 @@ function drawSpectrum(canv, graphData, graphParams) {
   c.globalAlpha = graphParams.spectrumOpacity
   spectralData.forEach(spectralSample => {
     fall -= graphParams.spectrumFallSpeed
-    spectralSample = smoothArray(spectralSample, graphParams.spectrumSmoothingIters, true)
     let n = spectralSample.length
     spectralSample.forEach((v, i) => {
       v = normalizeSpectralValue(v, graphParams)
       c.fillStyle = heatmapColor(v, graphParams)
       let x0 = Math.round(i / n * screen.w)
       let x1 = Math.round((i + 1) / n * screen.w)
-      let y = screen.h / 2 * (1 - v / valueScale) + fall
+      let y = screen.h / 2 * (1 - v * valueScale) + fall
       if (y < screen.h) c.fillRect(x0, y, x1 - x0, screen.h - y)
     })
   })
   c.globalAlpha = 1
+}
+
+function drawSpectrumStereo(canv, graphData, graphParams) {
+  return drawSpectrum(canv, graphData, graphParams, true)
 }
 
 function smoothArray(arr, nIters = 1, mostlyTail = false) {
@@ -1674,29 +1698,39 @@ function heatmapColor(v, graphParams) { // for values mostly in [-5, 5]
   }
 }
 
-function computeSpectrum(graphData, graphParams, scale = 1) {
+function computeSpectrum(graphData, graphParams, scale = 1, smoothIters = 0, stereo = false) {
   let dataL = graphData.lines.l
   let dataR = graphData.lines.r
+  if (stereo) {
+    let resultL = computeSpectrumLine(dataL, graphData.sampleRate, graphParams, scale / 2, smoothIters)
+    let resultR = computeSpectrumLine(dataR, graphData.sampleRate, graphParams, scale / 2, smoothIters)
+    if (stereo == 2) return [resultL, resultR]
+    return resultL.map((arrL, i) => Float32Array.of(...arrL.reverse(), ...resultR[i]))
+  }
+  return computeSpectrumLine(dataL.map((x, i) => x + dataR[i]), graphData.sampleRate, graphParams, scale, smoothIters)
+}
+
+function computeSpectrumLine(data, sampleRate, graphParams, scale = 1, smoothIters = 0) {
   let n = Math.ceil(graphParams.nOscillators * graphParams.nSubOscillators * (graphParams.mobileSubOscillators ? 1 : scale))
   let nFinal = Math.ceil(graphParams.nOscillators * scale)
   let freqStep = (graphParams.hzTo / graphParams.hzFrom) ** (1 / n)
   let sinTable = new Float32Array(n)
   let cosTable = new Float32Array(n)
-  let phi = 2 * Math.PI * graphParams.hzFrom / graphData.sampleRate
+  let phi = 2 * Math.PI * graphParams.hzFrom / sampleRate
   for (let k = 0; k < n; k++) {
     cosTable[k] = Math.cos(phi)
     sinTable[k] = Math.sin(phi)
     phi *= freqStep
   }
   let i = 0
-  let x0 = dataL[i] + dataR[i]
+  let x0 = data[i]
   let results = []
-  while (i < graphData.length) {
-    let localLimit = Math.min(graphData.length, i + graphParams.spectralSampleSize)
+  while (i < data.length) {
+    let localLimit = Math.min(data.length, i + graphParams.spectralSampleSize)
     let x = new Float32Array(n)
     let y = new Float32Array(n)
     while (++i < localLimit) {
-      let x1 = dataL[i] + dataR[i]
+      let x1 = data[i]
       let dx = x1 - x0
       for (let k = 0; k < n; k++) {
         let xk = x[k]
@@ -1711,8 +1745,9 @@ function computeSpectrum(graphData, graphParams, scale = 1) {
     }
     results.push(x)
   }
-  if (n <= nFinal) return results
-  return results.map(arr => compactArray(arr, nFinal))
+  if (n > nFinal) results = results.map(arr => compactArray(arr, nFinal))
+  if (smoothIters) results = results.map(arr => smoothArray(arr, smoothIters, true))
+  return results
 }
 
 function compactArray(arr, n) {
