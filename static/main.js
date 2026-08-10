@@ -184,6 +184,7 @@ conf.vis = {
   spectrumBarRange: 6,
   spectrumFallSpeed: 5,
   spectrumOpacity: 0.2,
+  spectrumOpacityRetention: 1,
   spectrumCompositeOperation: 'destination-over',
   spectrumSmoothingIters: 2,
   spectrumLinePrecision: 4,
@@ -1562,6 +1563,12 @@ function drawSpectrum(canv, graphData, graphParams, stereo = false) {
   let fall = graphParams.spectrumFallSpeed * spectralData.length
   c.drawImage(canv, 0, fall)
   c.clearRect(0, 0, screen.w, fall)
+  if (graphParams.spectrumOpacityRetention != 1) {
+    c.globalAlpha = graphParams.spectrumOpacityRetention
+    c.globalCompositeOperation = 'destination-in'
+    c.fillStyle = 'white'
+    c.fillRect(0, fall, screen.w, screen.h - fall)
+  }
   c.globalCompositeOperation = graphParams.spectrumCompositeOperation
   c.globalAlpha = graphParams.spectrumOpacity
   spectralData.forEach(spectralSample => {
