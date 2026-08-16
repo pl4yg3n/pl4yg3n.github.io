@@ -42,8 +42,9 @@ conf.modes = [
   {name: '⛅ Neutral', p: 'm:0', hidden: true},
   {name: '🌧️ Sorrow', p: ':sorrow', title: 'Sad tracks to comfort you'},
   {name: '🌨️ Sad', p: 'mood_sad', hidden: true},
-  {name: '☁️ Serious', p: 'm:0swu', title: 'All music except happy', hidden: true},
+  {name: '☁️ Moody', p: 'm:0swu', title: 'All music except happy', hidden: true},
   {name: '🌩️ Worrisome', p: 'm:w', hidden: true},
+  {name: '🌀 Unusual', p: 'm:u', hidden: true},
 
   {name: '📻 KeygenFM', p: '*k:1', title: 'Music present in KeygenFM playlists', hidden: true},
   {name: '🎩 c512w', p: ':c512w', title: 'Music by c512w', hidden: true},
@@ -138,7 +139,7 @@ conf.playlistAlias = {
   mood_good: 'm:123a',
   mood_sad: 'm:s|:sorrow',
   slice_orange: 'c:0123;q:2;m:123',
-  slice_pink: 'c:0123;q:345;m:123|c:0123;q:2;m:3',
+  slice_pink: 'c:0123;q:345;m:123|c:0123;q:2;m:3|c:m;q:23;m:23',
   group_cozy: ':summer|:slq|:forest|:garden|:ench|:bfuture|c:23;q:23;m:23',
   group_shiny: ':gem|:clarity|:vrl',
   group_party: 'c:3|:dec|:cff|:tubes|:megamix',
@@ -275,7 +276,7 @@ conf.urls = {
   musicPathLocal: 'data/',
   musicUrlModArchive: 'https://api.modarchive.org/downloads.php?moduleid=',
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
-  modArchiveMaxId: 214535,
+  modArchiveMaxId: 214790,
   cacheMusic: 'no-store',
 }
 
