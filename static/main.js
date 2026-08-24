@@ -215,6 +215,7 @@ conf.graffiti = {
   },
   anim: {
     enabled: !!params.anim,
+    changeCooldownSeconds: 0.5,
   }
 }
 
@@ -2095,13 +2096,27 @@ function updateGraffitiAnim() {
     state.anim.state = enabled
   }
   if (!enabled) return
-  setAnimPeriod(state.player.getCurrentTicksPerRow())
+  setAnimPeriod(
+    state.player.getCurrentBeatPeriod(),
+    state.player.getTickDurationSeconds(),
+  )
 }
 
-function setAnimPeriod(period) {
-  if (state.anim.currPeriod == period) return
-  state.anim.currPeriod = period
-  withElem('period', style => style.textContent = '.leaf{--period:'+period+'s;}')
+function setAnimPeriod(period, tickDuration) {
+  if (state.anim.periodCooldown > 0) state.anim.periodCooldown -= tickDuration
+  let periodMin = state.anim.periodMin || 0
+  if (
+    (!(state.anim.periodCooldown > 0) && periodMin != period) ||
+    periodMin > period ||
+    (periodMin == period && state.anim.periodLast != period)
+  ) {
+    state.anim.periodMin = periodMin = period
+    state.anim.periodCooldown = conf.graffiti.anim.changeCooldownSeconds
+  }
+  state.anim.periodLast = period
+  if (state.anim.currPeriod == periodMin) return
+  state.anim.currPeriod = periodMin
+  withElem('period', style => style.textContent = '.leaf{--period:'+periodMin+'s;}')
 }
 
 // --- coloring by category

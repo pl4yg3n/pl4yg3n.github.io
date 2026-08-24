@@ -24,9 +24,13 @@ ChiptuneJsPlayer.prototype.getCurrentOrder = function() {
   return libopenmpt._openmpt_module_get_current_order(this.currentPlayingNode.modulePtr)
 }
 
-ChiptuneJsPlayer.prototype.getCurrentTicksPerRow = function() {
+ChiptuneJsPlayer.prototype.getCurrentBeatPeriod = function() {
   return 240 / (libopenmpt._openmpt_module_get_current_estimated_bpm(this.currentPlayingNode.modulePtr)
     * (this.config.tickFactor || 1) * (this.config.speed || 1))
+}
+
+ChiptuneJsPlayer.prototype.getTickDurationSeconds = function() {
+  return this.currentPlayingNode.bufferSize / this.context.sampleRate
 }
 
 ChiptuneJsPlayer.prototype.getCurrentSeconds = function() {
