@@ -214,9 +214,9 @@ conf.graffiti = {
     error: '[error]',
   },
   anim: {
-    enabled: !!params.anim,
+    enabled: (params.anim || localStorage['playgen:graffitiAnim'] || 'true') != 'false',
     changeCooldownSeconds: 0.5,
-  }
+  },
 }
 
 // --- player config
@@ -881,6 +881,7 @@ function ready() {
       return
     }
     conf.graffiti.anim.enabled = !conf.graffiti.anim.enabled
+    localStorage['playgen:graffitiAnim'] = conf.graffiti.anim.enabled
     updateGraffitiAnim()
   })
   // about: set dynamic values
@@ -1944,7 +1945,7 @@ function parseUrlParams() {
 // --- session management
 
 function saveSession() {
-  if (!state.player) return
+  if (!state.player || !conf.play.restoreOnRefreshExpireMs) return
   let q = state.queue[state.queueIndex]
   if (!q || !q.id || q.customMetadata) return
   if (conf.play.restoreOnRefreshOnlyIfPlaying && !isPlaying()) return
@@ -1953,15 +1954,14 @@ function saveSession() {
     t: state.player.getCurrentSeconds(),
     speed: conf.play.speed,
     volume: conf.play.volume,
-    anim: conf.graffiti.anim.enabled,
     autoplay: isPlaying(),
-    pl: state.sourceName == params.pl ? params.pl : null,
+    pl: state.sourceName == params.pl ? params.pl : undefined,
     exp: Date.now() + conf.play.restoreOnRefreshExpireMs,
   })
 }
 
 function loadSession() {
-  if (!params.id && !params.t) setSession(localStorage['playgen:session'])
+  setSession(localStorage['playgen:session'])
   delete localStorage['playgen:session']
 }
 
@@ -1971,12 +1971,13 @@ function setSession(s) {
     s = JSON.parse(s)
     console.debug('Setting session:', s)
     if (s.exp && Date.now() > s.exp) return
-    if (params.pl && s.pl != params.pl) return
-    if (params.volume) delete s.volume
+    if (s.pl != params.pl) s = {autoplay: s.autoplay}
+    if (params.id) delete s.t
     delete s.exp
+    for (let k in s) if (params[k] !== undefined) delete s[k]
     Object.assign(params, s)
   } catch(err) {
-    console.error('Invalid session JSON:', err)
+    console.error('Invalid session:', s, err)
   }
 }
 
