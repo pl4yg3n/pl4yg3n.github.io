@@ -29,10 +29,22 @@ body {
 
 #graffiti {
   font-size: 54px;
-  margin-top: 0.5em;
+  margin: 0.5em auto 0.25em;
   display: inline-block;
   color: var(--foreground);
   cursor: pointer;
+  font-weight: 550;
+}
+
+#status-row {
+  margin: 0.5em auto;
+  height: 1.25em;
+  overflow-y: auto;
+  cursor: default;
+  white-space: pre-line;
+}
+#status-row.error-message {
+  color: #c55;
 }
 
 /* inputs */

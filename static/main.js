@@ -219,6 +219,15 @@ conf.graffiti = {
   },
 }
 
+conf.status = {
+  enabled: true,
+  opacity: 0.5,
+  durationSeconds: {
+    default: 3.2,
+    error: null,
+  },
+}
+
 // --- player config
 
 conf.playableExts = ['xm', 'mod', 'it', 's3m', 'fc13', 'fc14', 'mo3', 'mtm', 'mptm', 'mt2', 'stm'] // openmpt can play only those
@@ -278,6 +287,7 @@ conf.urls = {
   musicUrlModArchive: 'https://api.modarchive.org/downloads.php?moduleid=',
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
   modArchiveMaxId: 214790,
+  modArchiveSize: 'over 170K',
   cacheMusic: 'no-store',
 }
 
@@ -442,7 +452,7 @@ async function enqMa(id, solid=2, noError) {
   })
 }
 
-async function enqEntry(e, solid=1, customMetadata, noError) {
+async function enqEntry(e, solid=1, error, noError) {
   return addToQueue({
     e,
     src: conf.urls.collectionUrlRoot + conf.urls.musicPathLocal + e.path.replaceAll('%', '%25').replaceAll('#', '%23'),
@@ -458,7 +468,7 @@ async function enqEntry(e, solid=1, customMetadata, noError) {
     idMa: +e.tags['id:ma'] || +e.tags['id:dup:ma'] || null,
     solid,
     noError,
-    customMetadata: customMetadata
+    error: error
   })
 }
 
@@ -518,10 +528,13 @@ async function playQueue() {
     q.prepared = q.loaded
       .then(q => playQueueItem(q, playIndex))
       .then(q => {
-        if (playIndex == state.playIndex) setGraffitiStatus(q.customMetadata ? 'error' : 'ok')
+        if (playIndex == state.playIndex) setGraffitiStatus(q.error ? 'error' : 'ok')
         return q
       }, err => {
-        if (playIndex == state.playIndex) setGraffitiStatus('error')
+        if (playIndex == state.playIndex) {
+          postStatusMessage(err, 'error')
+          setGraffitiStatus('error')
+        }
         q.prepared = null
         throw err
       })
@@ -594,8 +607,14 @@ function dropQueueChunk(removedIndex, count=1) {
 // --- metadata output
 
 function displayMetadataDelayed(q) {
-  let data = q.customMetadata || state.player.metadata()
+  let data = q.error ? {title: 'Error!', message: q.error} : state.player.metadata()
+  if (!data.header) data.header = data.message || q.id || q.fileName
   safely(() => setMediaMetadata(q, data))
+  if (q.error) {
+    postStatusMessage(q.error, 'error')
+  } else {
+    postStatusMessage('Playing: ' + data.header, 'title')
+  }
   offloadAnimation('metadata-render', () => displayMetadata(q, data))
 }
 
@@ -662,7 +681,7 @@ async function playOnError(err) {
 
 async function enqOnError(errorMessage) {
   if (conf.play.noError) return
-  return enqEntry(pick(playlists.playable.filter(e => e.tags.error)), 0, {title: 'Error!', message: errorMessage}, true)
+  return enqEntry(pick(playlists.playable.filter(e => e.tags.error)), 0, errorMessage, true)
 }
 
 // --- file dropping
@@ -720,10 +739,10 @@ async function loadIndex() {
     .then(x => x.text())
     .then(parseIndex)
     .then(generatePlaylists)
-    .then(createControls)
     .then(ready)
     .catch(err => {
       console.error(err)
+      postStatusMessage(err, 'error')
       setGraffitiStatus('error')
     })
 }
@@ -839,6 +858,8 @@ function selectSourceByName(name) {
     let source = name.slice(1)
     if (state.source == source) return
     console.info('Playlist switched to: ' + name)
+    if (name == '!ma:random') postPlaylistSize(conf.urls.modArchiveSize)
+    if (name == '!favorites') postPlaylistSize(state.favorites.length)
     state.source = source
     state.sourceName = name
     return
@@ -860,6 +881,7 @@ function selectSourceByName(name) {
   let source = playlists[name]
   if (state.source == source) return
   console.info('Playlist switched to: ' + name + ' (' + source.length + ' items)')
+  postPlaylistSize(source.length)
   state.source = source
   state.sourceName = name
 }
@@ -867,6 +889,7 @@ function selectSourceByName(name) {
 // --- finishing init (todo: refactor this all)
 
 function ready() {
+  createControls(state.root)
   // graffiti: set to ready if not yet
   if (!state.player) setGraffitiStatus('ok')
   // graffiti: add actions on click
@@ -949,8 +972,8 @@ function withElem(id, f) {
 
 // --- generating controls
 
-function createControls() {
-  makeElem(document.body, 'div', controls => {
+function createControls(parent) {
+  makeElem(parent, 'div', controls => {
     controls.className = 'controls'
     createBackButton(controls)
     createPauseButton(controls)
@@ -1438,7 +1461,7 @@ function getGraph(useGraph) {
   let canv = document.getElementById('visual-output')
   if (useGraph) {
     if (!canv) {
-      canv = makeElem(document.body, 'canvas', canv => {
+      canv = makeElem(state.root, 'canvas', canv => {
         canv.id = 'visual-output'
         canv.width = conf.vis.w
         canv.height = conf.vis.h
@@ -1955,7 +1978,7 @@ function parseUrlParams() {
 function saveSession() {
   if (!state.player || !conf.play.restoreOnRefreshExpireMs) return
   let q = state.queue[state.queueIndex]
-  if (!q || !q.id || q.customMetadata) return
+  if (!q || !q.id || q.error) return
   if (conf.play.restoreOnRefreshOnlyIfPlaying && !isPlaying()) return
   localStorage['playgen:session'] = JSON.stringify({
     id: [q.id],
@@ -2077,8 +2100,8 @@ function setAmbientColor(ambientColor) {
 
 // --- graffiti animations
 
-function createGraffiti() {
-  state.graffiti = makeElem(document.body, 'pre', graffiti => {
+function createGraffiti(parent) {
+  state.graffiti = makeElem(parent, 'h1', graffiti => {
     for (let i = 0; i < conf.graffiti.text.ok.length; i++) {
       makeElem(graffiti, 'span', e => {
         e.className = 'leaf'
@@ -2126,6 +2149,38 @@ function setAnimPeriod(period, tickDuration) {
   if (state.anim.currPeriod == periodMin) return
   state.anim.currPeriod = periodMin
   withElem('period', style => style.textContent = '.leaf{--period:'+periodMin+'s;}')
+}
+
+// --- status output
+
+function createStatusOutput(parent) {
+  makeElem(parent, 'div', row => {
+    state.statusOutput = row
+    row.id = 'status-row'
+  })
+}
+
+function postStatusMessage(message, type = 'default') {
+  let enabled = conf.status.enabled
+  if (!enabled || (enabled != true && enabled != type)) return
+  console.log(message, type)
+  let out = state.statusOutput
+  out.textContent = message
+  out.style.transition = ''
+  out.style.opacity = conf.status.opacity
+  out.className = type + '-message'
+  let duration = conf.status.durationSeconds[type]
+  if (duration === undefined) duration = conf.status.durationSeconds.default
+  if (duration) offloadAnimation('status', () => {
+    offloadAnimation('status', () => {
+      out.style.transition = `opacity ease-in ${duration}s`
+      out.style.opacity = 0
+    })
+  })
+}
+
+function postPlaylistSize(n) {
+  postStatusMessage(`Playlist size: ${n} tracks`, 'playlist')
 }
 
 // --- coloring by category
@@ -2239,7 +2294,9 @@ function linkMail() {
 }
 
 function startup() {
-  createGraffiti()
+  let root = state.root = document.getElementById('app-root') || document.body
+  createGraffiti(root)
+  createStatusOutput(root)
   loadIndex()
   linkMail()
   if (conf.ambient.initialColor) setAmbientColor(conf.ambient.initialColor)
