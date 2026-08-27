@@ -154,11 +154,11 @@ conf.playlistAlias = {
 
 conf.vis = {
   outputs: [
-    {id: 'spectrum', f: drawSpectrum, description: 'Spectrum wave: equalizer-style spectrum of frequencies'},
+    {id: 'spectrum', f: drawSpectrum, description: 'Spectrum wave: equalizer-style frequency spectrum'},
     {id: 'spectrumline', f: drawSpectrumLine, description: 'Spectrum line: spectrum wave drawn as a simple line', hidden: true},
-    {id: 'spectrumstereo', f: drawSpectrumStereo, description: 'Spectrum wave stereo: same with left & right separated'},
-    {id: 'spectrogram', f: drawSpectrogram, description: 'Spectrogram: histogram for a spectrum of frequencies'},
-    {id: 'soundwave', f: drawWave, description: 'Sound wave: raw lines for stereo (left - blue, right - orange)'},
+    {id: 'spectrumstereo', f: drawSpectrumStereo, description: 'Spectrum wave stereo: frequency spectrum for left & right channels'},
+    {id: 'spectrogram', f: drawSpectrogram, description: 'Spectrogram: frequency spectrum histogram'},
+    {id: 'soundwave', f: drawWave, description: 'Sound wave: raw stereo data (left - blue, right - orange)'},
     {id: 'debug', f: drawDebug, description: 'Debug spectral colors', hidden: true},
   ],
   // canvas
@@ -1367,7 +1367,7 @@ function createGraphButton(parent) {
     button.title = [
       'Toggle visual outputs [Shift \\]',
       conf.vis.outputs.filter(g => !g.hidden).map(g => '- ' + g.description).join('\n'),
-      'For smooth output, try smaller buffer size',
+      'When music plays in background, no CPU is consumed for any animations',
     ].join('\n')
     button.addEventListener('click', toggleGraph)
     state.keyDownListeners['BackslashShift'] = toggleGraph
@@ -1427,7 +1427,10 @@ function resetGraph(useGraph) {
   let canv = getGraph(useGraph)
   if (canv) {
     canv.hidden = !useGraph
-    if (useGraph) canv.width = canv.width // clear canvas
+    if (useGraph) {
+      canv.width = canv.width // clear canvas
+      setGraphHint(useGraph, canv)
+    }
   }
 }
 
@@ -1439,10 +1442,15 @@ function getGraph(useGraph) {
         canv.id = 'visual-output'
         canv.width = conf.vis.w
         canv.height = conf.vis.h
+        setGraphHint(useGraph, canv)
       })
     }
   }
   return canv
+}
+
+function setGraphHint(useGraph, canv) {
+  canv.title = useGraph.description + '\nPress [Shift \\] to toggle visual output mode'
 }
 
 function drawGraphOffload(graphData, lowPriority = false) {
