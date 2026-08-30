@@ -44,7 +44,7 @@ conf.modes = [
   {name: '🌨️ Sad', p: 'mood_sad', hidden: true},
   {name: '☁️ Moody', p: 'm:0swu', title: 'All music except happy', hidden: true},
   {name: '🌩️ Worrisome', p: 'm:w', hidden: true},
-  {name: '🌀 Unusual', p: 'm:u', hidden: true},
+  {name: '🛸 Unusual', p: 'm:u'},
 
   {name: '📻 KeygenFM', p: '*k:1', title: 'Music present in KeygenFM playlists', hidden: true},
   {name: '🎩 c512w', p: ':c512w', title: 'Music by c512w', hidden: true},
@@ -221,9 +221,10 @@ conf.graffiti = {
 
 conf.status = {
   enabled: true,
-  opacity: 0.5,
+  opacity: 0.6,
   durationSeconds: {
-    default: 3.2,
+    default: 5,
+    playlist: 3,
     error: null,
   },
 }
@@ -286,8 +287,8 @@ conf.urls = {
   musicPathLocal: 'data/',
   musicUrlModArchive: 'https://api.modarchive.org/downloads.php?moduleid=',
   pageUrlModArchive: 'https://modarchive.org/index.php?request=view_by_moduleid&query=',
-  modArchiveMaxId: 214790,
-  modArchiveSize: 'over 170K',
+  modArchiveMaxId: 214871,
+  modArchiveSize: 'over 170K', // no one ever knows the exact size
   cacheMusic: 'no-store',
 }
 
@@ -2163,7 +2164,6 @@ function createStatusOutput(parent) {
 function postStatusMessage(message, type = 'default') {
   let enabled = conf.status.enabled
   if (!enabled || (enabled != true && enabled != type)) return
-  console.log(message, type)
   let out = state.statusOutput
   out.textContent = message
   out.style.transition = ''

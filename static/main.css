@@ -42,6 +42,7 @@ body {
   overflow-y: auto;
   cursor: default;
   white-space: pre-line;
+  color: var(--foreground);
 }
 #status-row.error-message {
   color: #c55;
@@ -417,8 +418,13 @@ input[type="range"] {
   max-width: 95vw;
 }
 #graffiti {
-  margin: 0.8em auto 0.4em;
+  margin: 0.8em auto 0.25em;
   font-size: 12vw;
+}
+#status-row {
+  margin: 0 1em;
+  height: 2.5em;
+  font-size: 0.8em;
 }
 summary {
   padding-bottom: 0.75em;
