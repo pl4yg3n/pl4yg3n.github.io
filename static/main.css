@@ -283,6 +283,7 @@ summary:hover {
 }
 #about-container > summary {
   float: right;
+  direction: rtl;
 }
 #about {
   max-width: 50em;
