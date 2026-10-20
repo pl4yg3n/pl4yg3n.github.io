@@ -220,7 +220,8 @@ conf.graffiti = {
   },
   anim: {
     enabled: (params.anim || localStorage['playgen:graffitiAnim'] || 'true') != 'false',
-    changeCooldownSeconds: 0.5,
+    offsetGradient: 0.5,
+    offsetGradientLoading: 1.25,
   },
 }
 
@@ -299,14 +300,12 @@ conf.urls = {
 
 const state = {
   player: null, // wasm backend to play buffer
+  playlists: null, // dynamic playlist list
   queue: [], // playing sequence (history + current + enqueued)
   queueIndex: -1, // queue position of currently played item
   playIndex: -1, // sequential id to prevent possible problems in case of concurrent loading
   source: null, // playlist/function to take next tracks from
-  anim: { // graffiti animation
-    state: false,
-    timer: null,
-  },
+  anim: {}, // graffiti animation
   hourlyRefresh: null, // hourly program update timer
   keyDownListeners: {},
   favorites: safely(() => {
@@ -314,6 +313,7 @@ const state = {
     return favString ? JSON.parse(favString) : []
   }, []),
   pending: {}, // pending calls and animations
+  e: {}, // dynamic DOM elements
 }
 safely(loadConfOverrides) // try overriding config with custom values
 
@@ -423,13 +423,13 @@ function pick(arr, hint) {
 }
 
 async function enqLocal(query) {
-  return enqEntry(pick(playlists.full.filter(x => x.md5 == query || x.title.includes(query))))
+  return enqEntry(pick(state.playlists.full.filter(x => x.md5 == query || x.title.includes(query))))
     .then(q => {console.info('Enqueued:', q); return q})
 }
 
 async function enqById(id, solid=1) {
   if (id.startsWith('ma:')) return enqMa(id.slice(3), solid)
-  return enqEntry(pick(playlists.full.filter(x => x.md5.startsWith(id))), solid)
+  return enqEntry(pick(state.playlists.full.filter(x => x.md5.startsWith(id))), solid)
 }
 
 async function enqUrl(url, color='#999', solid=2) {
@@ -687,7 +687,7 @@ async function playOnError(err) {
 
 async function enqOnError(errorMessage) {
   if (conf.play.noError) return
-  return enqEntry(pick(playlists.playable.filter(e => e.tags.error)), 0, errorMessage, true)
+  return enqEntry(pick(state.playlists.playable.filter(e => e.tags.error)), 0, errorMessage, true)
 }
 
 // --- file dropping
@@ -738,12 +738,12 @@ window.ondrop = e => {
   processDroppedFiles(e.dataTransfer.files)
 }
 
-// --- init index and playlists
+// --- init collection index and playlists
 
 async function loadIndex() {
   await fetch(conf.urls.collectionUrlRoot + conf.urls.indexPathLocal)
     .then(x => x.text())
-    .then(parseIndex)
+    .then(parseCollectionIndex)
     .then(generatePlaylists)
     .then(ready)
     .catch(err => {
@@ -753,7 +753,7 @@ async function loadIndex() {
     })
 }
 
-function parseIndex(fileContents) {
+function parseCollectionIndex(fileContents) {
   fileContents = fileContents.split('\n')
   let index = []
   for (let line of fileContents) {
@@ -780,12 +780,11 @@ function parseIndex(fileContents) {
   return index
 }
 
-let playlists = {}
-function generatePlaylists(index) {
-  playlists.full = index
-  playlists.playable = index.filter(e => conf.playableExts.includes(e.ext))
-  playlists.accepted = playlists.playable.filter(e => '0123mn'.includes(e.c))
+function generatePlaylists(full) {
+  let playable = full.filter(e => conf.playableExts.includes(e.ext))
+  let accepted = playable.filter(e => '0123mn'.includes(e.c))
   // all other playlists are generated lazily
+  state.playlists = {full, playable, accepted}
 }
 
 // plCode characters for expression combining:
@@ -793,7 +792,7 @@ function generatePlaylists(index) {
 // ; - and (high priority)
 // ! - not
 // disallowed due to url: &#%
-const plCodeExpressions = [
+conf.plCodeExpressions = [
   { // `.fc14` - match by file extension
     r: /^\.([\w]+)$/,
     f: m => `e.ext == '${m[1]}'`
@@ -819,7 +818,7 @@ function plCode2Function(code) {
       negate = true
       expr = expr.slice(1)
     }
-    for (let exprType of plCodeExpressions) {
+    for (let exprType of conf.plCodeExpressions) {
       let m = expr.match(exprType.r)
       if (!m) continue
       let js = '(' + exprType.f(m) + ')'
@@ -872,6 +871,8 @@ function selectSourceByName(name) {
     return
   }
   // define lazy playlist function
+  let playlists = state.playlists
+  if (!playlists) throw 'Playlists are not ready yet!'
   if (!playlists[name]) {
     let code = name
     code = conf.playlistAlias[code] || code
@@ -896,7 +897,7 @@ function selectSourceByName(name) {
 // --- finishing init (todo: refactor this all)
 
 function ready() {
-  createControls(state.root)
+  createControls(state.e.root)
   // graffiti: set to ready if not yet
   if (!state.player) setGraffitiStatus('ok')
   // graffiti: add actions on click
@@ -942,7 +943,7 @@ function ready() {
 }
 
 function fillDynamicAboutValues() {
-  setDynamicAbout('base-count', playlists.accepted.length + (params.more ? ` (${playlists.playable.length})` : ''))
+  setDynamicAbout('base-count', state.playlists.accepted.length + (params.more ? ` (${state.playlists.playable.length})` : ''))
   setDynamicAbout('supported-exts', conf.playableExts.join(', '))
   let publishedAt = new Date(document.lastModified).toISOString()
   setDynamicAbout('published-at', publishedAt.slice(0, 16).replace('T', ' ') + ' UTC', e => e.dateTime = publishedAt)
@@ -1001,11 +1002,11 @@ function createPauseButton(parent) {
         e.textContent = ['I>', 'II'][+isPlayingNow]
         e.title = ['Play', 'Pause'][+isPlayingNow] + ' [Space]'
         updateGraffitiAnim()
-        if (state.audioElem) {
+        if (state.e.audioElem) {
           if (isPlayingNow) {
-            state.audioElem.play()
+            state.e.audioElem.play()
           } else {
-            state.audioElem.pause()
+            state.e.audioElem.pause()
           }
         }
         safely(() => navigator.mediaSession.playbackState = isPlayingNow ? 'playing' : 'paused')
@@ -1086,7 +1087,7 @@ function createSeekBar(row) {
   makeElem(row, 'input', bar => {
     bar.type = 'range'
     bar.id = 'seekbar'
-    state.seekbar = bar
+    state.e.seekbar = bar
     bar.oninput = () => {
       if (!state.player) return
       let t = bar.value * conf.play.seekPrecision
@@ -1094,7 +1095,7 @@ function createSeekBar(row) {
     }
   })
   makeElem(row, 'span', e => {
-    state.progressNow = e
+    state.e.progressNow = e
     e.id = 't-now'
     // copy current time in seconds on click (useful for adding t:end)
     e.onclick = () => {
@@ -1103,11 +1104,11 @@ function createSeekBar(row) {
     }
   })
   makeElem(row, 'span', e => {
-    state.progressFull = e
+    state.e.progressFull = e
     e.id = 't-end'
   })
   row.hidden = true
-  state.progressRow = row
+  state.e.progressRow = row
   assignSeekKeybinds()
 }
 
@@ -1124,12 +1125,12 @@ function durationToString(t) {
 
 function resetProgress() {
   let duration = state.player.getTotalSeconds()
-  state.seekbar.max = Math.ceil(duration / conf.play.seekPrecision)
-  state.seekbar.min = 0
-  state.seekbar.value = 0
-  state.progressRow.hidden = false
-  state.progressNow.textContent = durationToString(0)
-  state.progressFull.textContent = durationToString(Math.round(duration))
+  state.e.seekbar.max = Math.ceil(duration / conf.play.seekPrecision)
+  state.e.seekbar.min = 0
+  state.e.seekbar.value = 0
+  state.e.progressRow.hidden = false
+  state.e.progressNow.textContent = durationToString(0)
+  state.e.progressFull.textContent = durationToString(Math.round(duration))
 }
 
 function updateProgressOffload() {
@@ -1141,9 +1142,9 @@ function updateProgressOffload() {
 
 function updateProgress() {
   let t = state.player.getCurrentSeconds()
-  state.seekbar.value = Math.round(t / conf.play.seekPrecision)
+  state.e.seekbar.value = Math.round(t / conf.play.seekPrecision)
   let timeNow = durationToString(t)
-  if (state.progressNow.textContent != timeNow) state.progressNow.textContent = timeNow
+  if (state.e.progressNow.textContent != timeNow) state.e.progressNow.textContent = timeNow
 }
 
 function createModeSelect(parent) {
@@ -1468,7 +1469,7 @@ function getGraph(useGraph) {
   let canv = document.getElementById('visual-output')
   if (useGraph) {
     if (!canv) {
-      canv = makeElem(state.root, 'canvas', canv => {
+      canv = makeElem(state.e.root, 'canvas', canv => {
         canv.id = 'visual-output'
         canv.width = conf.vis.w
         canv.height = conf.vis.h
@@ -1486,12 +1487,12 @@ function setGraphHint(useGraph, canv) {
 function drawGraphOffload(graphData, lowPriority = false) {
   if (!graphData || !graphData.length) return
   if (!conf.vis.enableOffload) return drawGraph(graphData)
-  if (state.drawGraphPending != null) {
+  if (state.pending.drawGraph != null) {
     if (lowPriority) return
-    cancelAnimationFrame(state.drawGraphPending)
+    cancelAnimationFrame(state.pending.drawGraph)
   }
-  state.drawGraphPending = requestAnimationFrame(t => {
-    state.drawGraphPending = null
+  state.pending.drawGraph = requestAnimationFrame(t => {
+    state.pending.drawGraph = null
     if (graphData.tNext != null && t < graphData.tNext) {
       return drawGraphOffload(graphData, true)
     }
@@ -2108,11 +2109,11 @@ function setAmbientColor(ambientColor) {
 // --- graffiti animations
 
 function createGraffiti(parent) {
-  state.graffiti = makeElem(parent, 'h1', graffiti => {
-    for (let i = 0; i < conf.graffiti.text.ok.length; i++) {
+  state.e.graffiti = makeElem(parent, 'h1', graffiti => {
+    let len = conf.graffiti.text.ok.length
+    for (let i = 0; i < len; i++) {
       makeElem(graffiti, 'span', e => {
         e.className = 'leaf'
-        e.style.animationDelay = -i / 8 + 's'
       })
     }
     graffiti.id = 'graffiti'
@@ -2123,46 +2124,62 @@ function createGraffiti(parent) {
 function setGraffitiStatus(status) {
   safely(() => {
     let text = conf.graffiti.text[status]
-    Array.from(state.graffiti.children).forEach((e, i) => e.textContent = text[i])
-    state.graffiti.classList[['add', 'remove'][+(status != 'loading')]]('loading')
+    Array.from(state.e.graffiti.children).forEach((e, i) => e.textContent = text[i])
+    if (status == 'loading') setAnimOffsets(conf.graffiti.anim.offsetGradientLoading, 0)
+    state.e.graffiti.classList[['add', 'remove'][+(status != 'loading')]]('loading')
   })
 }
 
 function updateGraffitiAnim() {
   let enabled = conf.graffiti.anim.enabled && isPlaying()
-  if (enabled != state.anim.state) {
-    state.graffiti.classList[['add', 'remove'][+state.anim.state]]('waving')
-    state.anim.state = enabled
+  if (enabled != state.anim.enabled) {
+    state.e.graffiti.classList[['add', 'remove'][+!enabled]]('waving')
+    if (enabled) {
+      state.anim.enabled = true
+    } else {
+      state.anim = {}
+    }
   }
   if (!enabled) return
-  setAnimPeriod(
-    state.player.getCurrentBeatPeriod(),
-    state.player.getTickDurationSeconds(),
-  )
+  setAnimPeriod(state.player.getCurrentBeatPeriod())
 }
 
-function setAnimPeriod(period, tickDuration) {
-  if (state.anim.periodCooldown > 0) state.anim.periodCooldown -= tickDuration
-  let periodMin = state.anim.periodMin || 0
-  if (
-    (!(state.anim.periodCooldown > 0) && periodMin != period) ||
-    periodMin > period ||
-    (periodMin == period && state.anim.periodLast != period)
-  ) {
-    state.anim.periodMin = periodMin = period
-    state.anim.periodCooldown = conf.graffiti.anim.changeCooldownSeconds
+function setAnimPeriod(period) {
+  let gradient = period * conf.graffiti.anim.offsetGradient
+  if (state.anim.currPeriod == period && state.anim.currGradient == gradient) return
+  withElem('period', style => style.textContent = '.leaf{--period:'+period+'s;}')
+
+  let now = performance.now() / 1000
+  let phase = 0.25
+  if (state.anim.start && state.anim.currPeriod) {
+    phase = (now - state.anim.start) / state.anim.currPeriod
+    phase = phase - Math.floor(phase)
   }
-  state.anim.periodLast = period
-  if (state.anim.currPeriod == periodMin) return
-  state.anim.currPeriod = periodMin
-  withElem('period', style => style.textContent = '.leaf{--period:'+periodMin+'s;}')
+  let offset = phase * period
+  setAnimOffsets(gradient, offset)
+  state.anim.start = now - offset
+  state.anim.currPeriod = period
+}
+
+function setAnimOffsets(gradient, offset) {
+  let len = conf.graffiti.text.ok.length
+  let leafElems = Array.from(state.e.graffiti.children)
+  let offsetStep = gradient / Math.max(len - 1, 1)
+  leafElems.forEach((e, i) => {
+    // reset animation phase
+    e.style.animation = 'none'
+    e.offsetHeight
+    e.style.animation = null
+    e.style.animationDelay = -(offset + i * offsetStep) + 's'
+  })
+  state.anim.currGradient = gradient
 }
 
 // --- status output
 
 function createStatusOutput(parent) {
   makeElem(parent, 'div', row => {
-    state.statusOutput = row
+    state.e.statusOutput = row
     row.id = 'status-row'
   })
 }
@@ -2170,7 +2187,7 @@ function createStatusOutput(parent) {
 function postStatusMessage(message, type = 'default') {
   let enabled = conf.status.enabled
   if (!enabled || (enabled != true && enabled != type)) return
-  let out = state.statusOutput
+  let out = state.e.statusOutput
   out.textContent = message
   out.style.transition = ''
   out.style.opacity = conf.status.opacity
@@ -2274,7 +2291,7 @@ async function createFakeAudioToMakeMediaSessionWork() {
   audioElem.src = URL.createObjectURL(blob)
   audioElem.loop = true
   audioElem.onplay = () => {
-    state.audioElem = audioElem
+    state.e.audioElem = audioElem
     setTimeout(
       () => {
         audioElem.volume = 0
@@ -2300,7 +2317,7 @@ function linkMail() {
 }
 
 function startup() {
-  let root = state.root = document.getElementById('app-root') || document.body
+  let root = state.e.root = document.getElementById('app-root') || document.body
   createGraffiti(root)
   createStatusOutput(root)
   loadIndex()
