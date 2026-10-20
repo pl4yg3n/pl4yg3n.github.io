@@ -36,6 +36,7 @@ conf.modes = [
   {name: '🎄 New Year', p: ':xmas', title: 'Festive holiday music', hidden: true},
   {name: '🎸 Rock', p: ':rock'},
   {name: '📼 Remix', p: 'group_remix', title: 'Remixes & remakes'},
+  {name: '🔑 Hack', p: ':hack', title: 'The most hacky tracks in this collection'},
   {name: '🤩 Euphoric', p: 'mood_best', title: 'The most ecstatic music XD', hidden: true},
   {name: '🍰 Happy', p: 'mood_gold', title: 'Happy music to cheer up ^^'},
   {name: '🧁 Cheerful', p: 'mood_good', title: 'Happy and slightly happy music :)', hidden: true},
@@ -68,7 +69,8 @@ conf.modes = [
   {name: '🛠️ Custom', p: 'custom', title: 'Custom playlist', hidden: 2}
 ]
 conf.program = {
-  defaultPlaylist: '@auto'
+  defaultPlaylist: '@auto',
+  mockDate: null,
 }
 conf.program.hourly = [
   /* 00: */ 'night_4',
@@ -109,6 +111,9 @@ conf.program.holidayFull = {
   '04-12': ':cosm',
 }
 conf.program.holidayEvent = {
+  '10-27': 'group_pumpkin',
+  '10-28': 'group_pumpkin',
+  '10-29': 'group_pumpkin',
   '10-30': 'group_pumpkin',
   '10-31': 'group_pumpkin',
   '12-25': ':xmas',
@@ -144,7 +149,7 @@ conf.playlistAlias = {
   group_shiny: ':gem|:clarity|:vrl',
   group_party: 'c:3|:dec|:cff|:tubes|:megamix',
   group_agglike: ':agg|:aggrld',
-  group_pumpkin: ':hut|:sour|:aggrld|:hlwn',
+  group_pumpkin: ':hut|:sour|:hlwn',
   group_remix: ':remake|:remix|:megamix',
   unprocessed: '*c:_',
   unaccepted: '*c:udx;:!dup;:!d:v',
@@ -835,7 +840,8 @@ function selectSourceByName(name) {
   // dynamic playlist selection handling
   if (name.startsWith('@')) {
     let controlName = name
-    let currDate = state.mockDate || new Date()
+    let currDate = conf.program.mockDate || new Date()
+    if (typeof currDate != 'object') currDate = new Date(currDate)
     let hour = currDate.getHours()
     currDate.setHours(hour - 3) // delay starting new date by 3 night hours
     let month = currDate.getMonth() + 1
