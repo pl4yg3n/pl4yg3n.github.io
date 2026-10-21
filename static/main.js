@@ -204,11 +204,15 @@ conf.vis = {
     lIn: {color: '#05c', alpha: 0.5},
     rIn: {color: '#a30', alpha: 0.5},
   },
+  defaultFgColor: '#ccc',
 }
 
 conf.ambient = {
-  initialColor: null, // '#050',
+  initialColor: null, // '#050' is hardcoded in HTML to avoid load flash
   defaultColor: '#aaa',
+  fileColor: '#9ac',
+  modArchiveColor: '#99a8a8',
+  urlColor: '#a99',
   changeByMusic: true,
 }
 
@@ -220,8 +224,9 @@ conf.graffiti = {
   },
   anim: {
     enabled: (params.anim || localStorage['playgen:graffitiAnim'] || 'true') != 'false',
-    offsetGradient: 0.5,
+    offsetGradient: 0.5, // last letter is always in opposite phase of first, for symmetry
     offsetGradientLoading: 1.25,
+    initialPhase: 0.25, // first and last letters are vertical in this phase
   },
 }
 
@@ -252,8 +257,8 @@ conf.play = {
   // speed is a multiplier, but its changes are in log2 scale
   speed: Math.abs(+params.speed || 1),
   speedExpStep: 1/8,
-  speedExpMin: -3,
-  speedExpMax: 3,
+  speedExpMin: -2.5,
+  speedExpMax: 2.5,
   speedExpPrecision: 1/32,
 
   // all volume in relative millibels
@@ -275,7 +280,7 @@ conf.play = {
   restoreOnRefreshExpireMs: 3600000, // 1h
   restoreOnRefreshOnlyIfPlaying: false,
 
-  bubbleIntroMs: 800,
+  bubbleIntroMs: 900,
   tickFactor: 1,
   maxQueueHistorySize: Math.max(Math.floor(+params.qsize) || 100, 0),
   useGraph: ((id) => conf.vis.outputs.find(g => g.id == id))(params.graph || localStorage['playgen:visual'] || conf.vis.outputs[0].id),
@@ -296,15 +301,17 @@ conf.urls = {
   modArchiveMaxId: 214871,
   modArchiveSize: 'over 170K', // no one ever knows the exact size
   cacheMusic: 'no-store',
+  md5IdSize: 10,
 }
 
 const state = {
-  player: null, // wasm backend to play buffer
+  player: null, // wasm backend to play music
   playlists: null, // dynamic playlist list
   queue: [], // playing sequence (history + current + enqueued)
   queueIndex: -1, // queue position of currently played item
   playIndex: -1, // sequential id to prevent possible problems in case of concurrent loading
   source: null, // playlist/function to take next tracks from
+  sourceName: null, // current playlist/mode name
   anim: {}, // graffiti animation
   hourlyRefresh: null, // hourly program update timer
   keyDownListeners: {},
@@ -327,7 +334,7 @@ function safely(f, fallback) {
 function offloadAnimation(name, f) {
   let old = state.pending[name]
   if (old != null) cancelAnimationFrame(old) // avoid cramming
-  state.pending[name] = requestAnimationFrame(t => {
+  if (f) return state.pending[name] = requestAnimationFrame(t => {
     state.pending[name] = null
     f(t)
   })
@@ -336,7 +343,7 @@ function offloadAnimation(name, f) {
 function offloadCall(name, f) {
   let old = state.pending[name]
   if (old != null) clearTimeout(old) // avoid cramming
-  state.pending[name] = setTimeout(() => {
+  if (f) return state.pending[name] = setTimeout(() => {
     state.pending[name] = null
     f()
   })
@@ -428,14 +435,15 @@ async function enqLocal(query) {
 }
 
 async function enqById(id, solid=1) {
+  if (!id) return
   if (id.startsWith('ma:')) return enqMa(id.slice(3), solid)
   return enqEntry(pick(state.playlists.full.filter(x => x.md5.startsWith(id))), solid)
 }
 
-async function enqUrl(url, color='#999', solid=2) {
+async function enqUrl(url, color, solid=2) {
   return addToQueue({
     src: url,
-    color,
+    color: color || conf.ambient.urlColor,
     solid,
   }).then(q => {console.info('Enqueued:', q); return q})
 }
@@ -447,7 +455,7 @@ async function enqMa(id, solid=2, noError) {
   }
   return addToQueue({
     src: conf.urls.musicUrlModArchive + id,
-    color: '#99a8a8',
+    color: conf.ambient.modArchiveColor,
     insn: {
       t: params.t,
     },
@@ -462,7 +470,7 @@ async function enqEntry(e, solid=1, error, noError) {
   return addToQueue({
     e,
     src: conf.urls.collectionUrlRoot + conf.urls.musicPathLocal + e.path.replaceAll('%', '%25').replaceAll('#', '%23'),
-    color: category_to_color(e.c, e.q, e.m),
+    color: categoryColor(e.c, e.q, e.m),
     insn: {
       start: e.tags['t:start'],
       t: params.t,
@@ -470,7 +478,7 @@ async function enqEntry(e, solid=1, error, noError) {
       repeat: e.tags['repeat'],
       gainMillibels: e.tags['vol'],
     },
-    id: e.md5.slice(0, 10),
+    id: e.md5.slice(0, conf.urls.md5IdSize),
     idMa: +e.tags['id:ma'] || +e.tags['id:dup:ma'] || null,
     solid,
     noError,
@@ -495,6 +503,9 @@ async function addToQueue(q) {
   let smashCurrent = smashQueue(q.solid)
   q.queueIndex = state.queue.push(q) - 1
   console.debug('Added to queue:', q)
+  if (q.solid) {
+    postStatusMessage('Added to queue: ' + (q.fileName || q.id || q.src), 'queue')
+  }
   let loaded = q.buffer ? Promise.resolve(q) : fetch(q.src, {
     cache: conf.urls.cacheMusic,
   })
@@ -615,7 +626,7 @@ function dropQueueChunk(removedIndex, count=1) {
 function displayMetadataDelayed(q) {
   let data = q.error ? {title: 'Error!', message: q.error} : state.player.metadata()
   if (!data.header) data.header = data.message || q.id || q.fileName
-  safely(() => setMediaMetadata(q, data))
+  safely(() => setMediaMetadata(data))
   if (q.error) {
     postStatusMessage(q.error, 'error')
   } else {
@@ -624,10 +635,10 @@ function displayMetadataDelayed(q) {
   offloadAnimation('metadata-render', () => displayMetadata(q, data))
 }
 
-function setMediaMetadata(q, data) {
+function setMediaMetadata(data) {
   navigator.mediaSession.metadata = new MediaMetadata({
     title: 'Playgen',
-    album: data.header || q.id,
+    album: data.header,
     // todo: add artist
     artwork: [
       //{src: './static/img/pkey.svg', sizes: '256x256,512x512', type: 'image/svg+xml'},
@@ -706,7 +717,7 @@ function processDroppedFiles(files) {
         addToQueue({
           buffer: reader.result,
           fileName: reader.fileName,
-          color: '#99a',
+          color: conf.ambient.fileColor,
           solid: 2,
           persist: true,
         })
@@ -853,8 +864,8 @@ function selectSourceByName(name) {
     if (name == '@event') {
       name = conf.program.holidayEvent[yearDay] || conf.program.weekdayEvent[weekday]
     }
-    let toNextHour = 3600500 - Date.now() % 3600000
-    state.hourlyRefresh = setTimeout(() => selectPlaylist(controlName), toNextHour)
+    let msToNextHour = 3600500 - Date.now() % 3600000
+    state.hourlyRefresh = setTimeout(() => selectPlaylist(controlName), msToNextHour)
   } else if (state.hourlyRefresh) {
     clearTimeout(state.hourlyRefresh)
     state.hourlyRefresh = null
@@ -1553,7 +1564,7 @@ function drawWave(canv, graphData, graphParams, valueScale = 1) {
   c.miterLimit = graphParams.lineMiterLimit
   for (let k in graphData.lines) {
     let l = graphData.lines[k]
-    let props = conf.vis.lineProps[k] || {color: '#ccc'}
+    let props = conf.vis.lineProps[k] || {color: conf.vis.defaultFgColor}
     if (props.alpha != null) c.globalAlpha = props.alpha
     c.lineWidth = props.size || graphParams.lineWidth
     c.beginPath()
@@ -1675,7 +1686,7 @@ function drawDebug(canv, graphData, graphParams) {
       let x1 = Math.round((i + 1) / n * screen.w)
       c.fillRect(x0, y0, x1 - x0, y1 - y0)
     }
-    c.strokeStyle = '#ccc'
+    c.strokeStyle = conf.vis.defaultFgColor
     c.strokeText(heatmapNames[j], 8, (y0 + y1)/2)
   }
 }
@@ -1939,8 +1950,7 @@ function updateFavorite(id, shouldBeFav) {
 
 function setFavoritePlaylistHidden(hidden) {
   let option = document.querySelector('option[value="!favorites"]')
-  if (!option) return
-  option.hidden = hidden
+  if (option) option.hidden = hidden
 }
 
 // --- key handling
@@ -2150,7 +2160,7 @@ function setAnimPeriod(period) {
   withElem('period', style => style.textContent = '.leaf{--period:'+period+'s;}')
 
   let now = performance.now() / 1000
-  let phase = 0.25
+  let phase = conf.graffiti.anim.initialPhase
   if (state.anim.start && state.anim.currPeriod) {
     phase = (now - state.anim.start) / state.anim.currPeriod
     phase = phase - Math.floor(phase)
@@ -2163,9 +2173,8 @@ function setAnimPeriod(period) {
 
 function setAnimOffsets(gradient, offset) {
   let len = conf.graffiti.text.ok.length
-  let leafElems = Array.from(state.e.graffiti.children)
   let offsetStep = gradient / Math.max(len - 1, 1)
-  leafElems.forEach((e, i) => {
+  Array.from(state.e.graffiti.children).forEach((e, i) => {
     // reset animation phase
     e.style.animation = 'none'
     e.offsetHeight
@@ -2193,8 +2202,9 @@ function postStatusMessage(message, type = 'default') {
   out.style.opacity = conf.status.opacity
   out.className = type + '-message'
   let duration = conf.status.durationSeconds[type]
-  if (duration === undefined) duration = conf.status.durationSeconds.default
-  if (duration) offloadAnimation('status', () => {
+  if (duration === null) return offloadAnimation('status', null)
+  if (!duration) duration = conf.status.durationSeconds.default
+  return offloadAnimation('status', () => {
     offloadAnimation('status', () => {
       out.style.transition = `opacity ease-in ${duration}s`
       out.style.opacity = 0
@@ -2208,7 +2218,7 @@ function postPlaylistSize(n) {
 
 // --- coloring by category
 
-function category_to_rgb15(x0, x2, x3) {
+function categoryToRgb15(x0, x2, x3) {
   let c0 = +x0 || 0
   let c = 2 + 2 * Math.min(c0, 1)
   let c3 = c * 3 + Math.max(c0, 1) - 2
@@ -2253,11 +2263,11 @@ function category_to_rgb15(x0, x2, x3) {
   return [r,g,b]
 }
 
-function category_to_color(x0, x2, x3) {
-  return '#' + category_to_rgb15(x0, x2, x3).map(x => x.toString(16)).join('')
+function categoryColor(x0, x2, x3) {
+  return '#' + categoryToRgb15(x0, x2, x3).map(x => x.toString(16)).join('')
 }
 
-// --- obligatory bubbles
+// --- intro bubbles
 
 function createIntroBeepBlob(durationSeconds = 4, sampleRate = 8000) {
   const numSamples = durationSeconds * sampleRate
