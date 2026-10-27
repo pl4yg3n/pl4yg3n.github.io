@@ -25,6 +25,9 @@ html, #graffiti, input[type="text"], select, button {
 
 body {
   margin: 0 0 2em;
+}
+
+main {
   overflow-x: hidden;
 }
 

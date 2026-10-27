@@ -2210,7 +2210,7 @@ function postStatusMessage(message, type = 'default') {
   return offloadAnimation('status', () => {
     offloadAnimation('status', () => {
       out.style.transition = `opacity ease-in ${duration}s, transform ease-in ${duration * skewTime}s ${duration * (1 - skewTime)}s`
-      if (skewTime) out.style.transform = 'skew(-90deg)'
+      if (skewTime) out.style.transform = 'skewX(-90deg)'
       out.style.opacity = 0
     })
   })
