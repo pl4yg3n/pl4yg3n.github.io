@@ -25,6 +25,7 @@ html, #graffiti, input[type="text"], select, button {
 
 body {
   margin: 0 0 2em;
+  overflow-x: hidden;
 }
 
 #graffiti {
@@ -426,6 +427,7 @@ input[type="range"] {
   margin: 0 1em;
   height: 2.5em;
   font-size: 0.8em;
+  align-content: center;
 }
 summary {
   padding-bottom: 0.75em;

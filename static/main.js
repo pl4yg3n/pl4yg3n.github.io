@@ -233,6 +233,7 @@ conf.graffiti = {
 conf.status = {
   enabled: true,
   opacity: 0.6,
+  skewTime: 0.5, // 0 = disable skew, 0.5 = half delay, 1 = no delay
   durationSeconds: {
     default: 5,
     playlist: 3,
@@ -2198,7 +2199,9 @@ function postStatusMessage(message, type = 'default') {
   if (!enabled || (enabled != true && enabled != type)) return
   let out = state.e.statusOutput
   out.textContent = message
+  let skewTime = conf.status.skewTime
   out.style.transition = ''
+  out.style.transform = ''
   out.style.opacity = conf.status.opacity
   out.className = type + '-message'
   let duration = conf.status.durationSeconds[type]
@@ -2206,7 +2209,8 @@ function postStatusMessage(message, type = 'default') {
   if (!duration) duration = conf.status.durationSeconds.default
   return offloadAnimation('status', () => {
     offloadAnimation('status', () => {
-      out.style.transition = `opacity ease-in ${duration}s`
+      out.style.transition = `opacity ease-in ${duration}s, transform ease-in ${duration * skewTime}s ${duration * (1 - skewTime)}s`
+      if (skewTime) out.style.transform = 'skew(-90deg)'
       out.style.opacity = 0
     })
   })
