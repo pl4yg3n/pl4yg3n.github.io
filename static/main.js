@@ -2129,7 +2129,7 @@ function setPlayingStyle(q) {
 }
 function setAmbientColor(ambientColor) {
   if (!ambientColor) ambientColor = conf.ambient.defaultColor
-  withElem('ambient', style => style.textContent = 'html{--ambient:'+ambientColor+';}')
+  document.documentElement.style.setProperty('--ambient', ambientColor)
 }
 
 // --- graffiti animations
@@ -2173,7 +2173,7 @@ function updateGraffitiAnim() {
 function setAnimPeriod(period) {
   let gradient = period * conf.graffiti.anim.offsetGradient
   if (state.anim.currPeriod == period && state.anim.currGradient == gradient) return
-  withElem('period', style => style.textContent = '.leaf{--period:'+period+'s;}')
+  state.e.graffiti.style.setProperty('--period', period + 's')
 
   let now = performance.now() / 1000
   let phase = conf.graffiti.anim.initialPhase
