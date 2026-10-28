@@ -237,6 +237,7 @@ conf.status = {
   durationSeconds: {
     default: 5,
     playlist: 3,
+    settings: 3,
     error: null,
   },
 }
@@ -265,7 +266,7 @@ conf.play = {
   // all volume in relative millibels
   volume: +params.volume || 0,
   volumeStep: 250,
-  volumeMin: -4000,
+  volumeMin: -3000,
   volumeMax: 1000,
   volumePrecision: 1,
 
@@ -348,6 +349,12 @@ function offloadCall(name, f) {
     state.pending[name] = null
     f()
   })
+}
+
+function toReadableNumber(n, k = 2) {
+  let absN = Math.abs(n)
+  n = n.toFixed(k + (absN < 1 ? -Math.log10(absN) : 0))
+  return n.replace(/\.?0*$/, '')
 }
 
 // --- playing logic init
@@ -517,7 +524,7 @@ async function addToQueue(q) {
     .then(buffer => {
       if (buffer.byteLength < 20) throw 'Invalid response at ' + q.src
       q.buffer = buffer
-      console.debug('Loaded:', q.src, `(${(q.buffer.byteLength / 1048576).toFixed(2)} MiB)`)
+      console.debug('Loaded:', q.src, `(${toReadableNumber(q.buffer.byteLength / 1048576)} MiB)`)
       return q
     })
     .catch(err => {
@@ -1213,11 +1220,12 @@ function createOptionalControls(parent) {
 function createVolumeBar(row) {
   createRangeBar(
     row,
-    '🔈 🔉 🔉 🔊 🔊 💥',
+    '🔈 🔉 🔉 🔊 💥',
     'Volume',
     v => {if (state.player) state.player.setVolumeGainMillibels(v)},
     () => conf.play.volume,
     v => conf.play.volume = v,
+    v => toReadableNumber(100 * 10 ** (v / 1000), 1) + '%',
     conf.play.volumeMin,
     conf.play.volumeMax,
     conf.play.volumeStep,
@@ -1234,6 +1242,7 @@ function createSpeedBar(row) {
     null,
     () => Math.log2(conf.play.speed),
     v => conf.play.speed = 2 ** v,
+    v => 'x' + toReadableNumber(2 ** v),
     conf.play.speedExpMin,
     conf.play.speedExpMax,
     conf.play.speedExpStep,
@@ -1242,7 +1251,12 @@ function createSpeedBar(row) {
   )
 }
 
-function createRangeBar(row, iconSet, title, apply, getConfig, setConfig, min, max, step, precision, keys) {
+function createRangeBar(row, iconSet, title, apply, getConfig, setConfig, show, min, max, step, precision, keys) {
+  let setConfigRaw = setConfig
+  setConfig = value => {
+    postStatusMessage(title + ': ' + show(value), 'settings')
+    return setConfigRaw(value)
+  }
   iconSet = iconSet.split(' ')
   row.className = 'range-row'
   let marker = makeElem(row, 'span', marker => {
@@ -1464,6 +1478,7 @@ function toggleGraph(event) {
   localStorage['playgen:visual'] = useGraph ? useGraph.id : 'none'
   conf.play.useGraph = useGraph
   resetGraph(useGraph)
+  postStatusMessage('Visuals: ' + (useGraph ? useGraph.description.split(': ')[0] : 'off'), 'settings')
 }
 
 function resetGraph(useGraph) {
